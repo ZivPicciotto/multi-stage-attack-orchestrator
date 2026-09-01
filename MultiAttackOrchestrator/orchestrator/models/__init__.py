@@ -6,6 +6,7 @@ from orchestrator.models.device import (
     DeviceInfo,
     IOSVersion,
 )
+from orchestrator.models.extraction import ExtractionMode, ExtractionRequest
 from orchestrator.models.phases import OrchestrationPhase
 
 __all__ = [
@@ -14,4 +15,6 @@ __all__ = [
     "DeviceInfo",
     "DeviceCompatibilityReqs",
     "SingleAttackSharedContext",
+    "ExtractionMode",
+    "ExtractionRequest",
 ]
