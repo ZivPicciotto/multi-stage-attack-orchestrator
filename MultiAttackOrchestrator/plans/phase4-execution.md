@@ -29,7 +29,7 @@ The control flow separates cleanly into "run the chain once" and "how many times
 def run(self, attack, session) -> AttackResult:
     restarts = 0
     while True:
-        context = StageContext()                 # fresh per chain attempt (a restart = device reset)
+        context = SingleAttackSharedContext()                 # fresh per chain attempt (a restart = device reset)
         outcome = self._run_chain_once(attack, session, context)
         if outcome.kind is SUCCESS:
             return AttackResult.success(attack.id, restarts_used=restarts)
@@ -88,7 +88,7 @@ device intact. This distinction is the whole reason phase 2 keeps logical failur
 separate from a connection fault (an exception).
 
 **Why context resets on restart.** A restart re-runs stage 1 on a fresh device; any tokens a prior
-attempt wrote to the context are stale, so each chain attempt gets a new `StageContext`.
+attempt wrote to the context are stale, so each chain attempt gets a new `SingleAttackSharedContext`.
 
 ## Tests (`test_execution.py`) — all deterministic via the scripted fake
 

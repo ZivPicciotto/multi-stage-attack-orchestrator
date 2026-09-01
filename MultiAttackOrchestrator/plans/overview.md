@@ -111,9 +111,9 @@ MultiAttackOrchestrator/
 │   │   ├── __init__.py
 │   │   ├── device.py               # DeviceInfo, IOSVersion, DeviceCompatibilityReqs
 │   │   ├── attack.py               # SingleStage, Attack
-│   │   ├── results.py              # StageResult, StageOutcome, AttackResult,
-│   │   │                           #   FileResult, ExtractionOutcome, MultiAttackResult
-│   │   ├── context.py              # StageContext (shared pipeline context)
+│   │   ├── results.py              # StageResult, AttackResult, FileResult,
+│   │   │                           #   ExtractionOutcome, MultiAttackResult
+│   │   ├── context.py              # SingleAttackSharedContext (shared pipeline context)
 │   │   ├── phases.py               # OrchestrationPhase
 │   │   └── extraction.py           # ExtractionMode, ExtractionRequest
 │   ├── connection/
@@ -150,7 +150,7 @@ folder `MultiAttackOrchestrator/`. Imports read `from orchestrator.resolver impo
 
 | Phase | Doc | Deliverable | Depends on |
 |-------|-----|-------------|------------|
-| 1 | `phase1-foundations.md` | Pure types: enums, results, `DeviceInfo`, reqs, `SingleStage`/`Attack` shapes, `StageContext` | — |
+| 1 | `phase1-foundations.md` | Pure types: enums, results, `DeviceInfo`, reqs, `SingleStage`/`Attack` shapes, `SingleAttackSharedContext` | — |
 | 2 | `phase2-connection.md` | `DeviceConnection` protocol + error types, in-memory fake, provider, `DeviceSession` | 1 |
 | 3 | `phase3-resolution.md` | Sample attack catalog, `AttackResolver` (filter + rank) | 1, 2 |
 | 4 | `phase4-execution.md` | `SingleAttackOrchestrator` (retry / crash-restart / drop) | 1, 2, 3 |

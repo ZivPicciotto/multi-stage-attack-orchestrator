@@ -65,10 +65,10 @@ the result object).
 (patches close bugs), battery (long attacks need power). Everything else is out of scope; the
 prompt explicitly leaves "what else matters" to us and we keep it lean.
 
-## `context.py` — StageContext
+## `context.py` — SingleAttackSharedContext
 
 ```python
-class StageContext:
+class SingleAttackSharedContext:
     """Shared, mutable scratchpad threaded through one chain attempt.
     Stages write named outputs; later stages read them."""
     def set(self, key: str, value: object) -> None: ...
@@ -93,13 +93,11 @@ class SingleStage:
     max_retries: int = 0          # in-place retries on logical failure
     crashes_on_failure: bool = False  # if True, a failure means restart the whole chain
 
-    def attempt(self, connection, context: StageContext) -> "StageResult":
-        outcome = connection.run_stage(self.stage_id)   # device decides reality
-        if outcome.succeeded:
-            if outcome.payload is not None:
-                context.set(self.name, outcome.payload)
-            return StageResult.ok(self.name)
-        return StageResult.fail(self.name, reason="device reported stage failure")
+    def attempt(self, connection, context: SingleAttackSharedContext) -> "StageResult":
+        result = connection.run_stage(self.stage_id)    # device decides reality
+        if result.succeeded and result.payload is not None:
+            context.set(self.name, result.payload)      # stash payload for later stages
+        return result
         # ConnectionLostError is NOT caught here — it propagates to the orchestrator
 
 @dataclass(frozen=True)
@@ -121,26 +119,22 @@ subclass and override `attempt()`. This keeps the polymorphism in *data* (the st
 it belongs.
 
 **Decision — `attempt()` lets `ConnectionLostError` propagate.** Catching it here would blur the
-stage/orchestrator split. The stage only translates the two *logical* outcomes; the orchestrator
-owns the transport-fault reaction.
+stage/orchestrator split. The stage handles only the two *logical* outcomes (returning the
+connection's `StageResult`, after stashing any payload into the context); the orchestrator owns
+the transport-fault reaction.
 
 ## `results.py` — the result vocabulary
 
 ```python
 @dataclass(frozen=True)
-class StageOutcome:      # what the CONNECTION returns for one run_stage() call (wire-level verdict)
+class StageResult:       # one stage attempt's verdict — returned by the connection, passed through by the stage
     succeeded: bool
-    payload: bytes | None = None
-
-@dataclass(frozen=True)
-class StageResult:       # what a STAGE returns for one attempt (framework-level verdict)
-    stage_name: str
-    succeeded: bool
-    reason: str | None = None
+    payload: bytes | None = None   # data the device handed back on success (-> SingleAttackSharedContext)
+    reason: str | None = None      # human-readable explanation on failure
     @classmethod
-    def ok(cls, name): ...
+    def ok(cls, payload=None): ...
     @classmethod
-    def fail(cls, name, reason): ...
+    def fail(cls, reason): ...
 
 @dataclass(frozen=True)
 class AttackResult:
@@ -180,10 +174,13 @@ class MultiAttackResult:
     error: str | None = None
 ```
 
-**Decision — two verdict types (`StageOutcome` vs `StageResult`).** They live at different layers:
-`StageOutcome` is the transport's answer ("the device says the step worked, here's a payload");
-`StageResult` is the framework's record ("stage *Bootrom Trigger* passed"). Keeping them separate
-means the connection contract never leaks framework concepts and vice-versa.
+**Decision — one verdict type (`StageResult`), not two.** The connection returns it from
+`run_stage()`, and the stage passes it straight through (after stashing any payload into the
+context). We considered a separate wire-level `StageOutcome` vs. framework-level `StageResult`
+split, but at this scale it's ceremony — a single type carrying `succeeded` + `payload` + `reason`
+serves both. `StageResult` deliberately does **not** carry a stage name: the orchestrator always
+knows which stage it invoked (it holds the `SingleStage`), so it reads `stage.name` for
+`AttackResult.failed_stage` rather than duplicating it in every result.
 
 **Decision — per-file extraction results.** `all_files`/`multi_files` return a tuple of
 `FileResult`, never one boolean, so "got 8 of 10, here's the 2 that failed and why" survives into
