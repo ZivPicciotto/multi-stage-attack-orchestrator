@@ -9,6 +9,7 @@ from orchestrator.connection.base import (
     RemoteFileError,
 )
 from orchestrator.connection.fake import (
+    DROP,
     DeviceState,
     InMemoryDeviceConnection,
     ScriptedBehavior,
@@ -25,6 +26,7 @@ __all__ = [
     "ProtocolError",
     "DeviceState",
     "ScriptedBehavior",
+    "DROP",
     "InMemoryDeviceConnection",
     "DeviceConnectionProvider",
     "FakeConnectionProvider",
