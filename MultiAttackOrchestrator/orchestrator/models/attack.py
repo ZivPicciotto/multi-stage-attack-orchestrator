@@ -20,16 +20,16 @@ class SingleStage:
     name: str
     stage_id: str  # command sent to the device to run this step
     success_probability: float  # the attacker's ESTIMATE — used only for ranking
-    max_retries: int = 0  # in-place retries on logical failure
-    crashes_on_failure: bool = False  # if True, a failure means restart the whole chain
+    max_retries: int = 0  # ADDITIONAL in-place attempts after the first, on a clean failure
 
     def attempt(
         self,
         connection: DeviceConnection,
         context: SingleAttackSharedContext,
     ) -> StageResult:
-        # The device decides reality; the stage just relays the verdict and stashes any payload.
-        # A dropped connection raises ConnectionLostError, which propagates to the orchestrator.
+        # The device decides reality — including whether a failure crashed it (result.crashed).
+        # The stage just relays the verdict and stashes any payload. A dropped connection raises
+        # ConnectionLostError, which propagates to the orchestrator.
         result = connection.run_stage(self.stage_id)
         if result.succeeded and result.payload is not None:
             context.set(self.name, result.payload)
@@ -43,6 +43,10 @@ class Attack:
     requirements: DeviceCompatibilityReqs
     max_restarts: int = 1  # full-chain restarts allowed (the cost-of-failure knob)
     description: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.stages:
+            raise ValueError(f"attack {self.id!r} must have at least one stage")
 
     @property
     def overall_probability(self) -> float:

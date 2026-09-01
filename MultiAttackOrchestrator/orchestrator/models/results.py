@@ -11,11 +11,17 @@ from orchestrator.models.phases import OrchestrationPhase
 
 @dataclass(frozen=True)
 class StageResult:
-    """One stage attempt's verdict. Returned by the connection, passed through by the stage."""
+    """One stage attempt's verdict. Returned by the connection, passed through by the stage.
+
+    Whether a failure *crashed* the device is the device's verdict, not a fixed property of the
+    stage: the same exploit can fail cleanly one attempt and panic the device the next. The
+    orchestrator retries a clean failure in place but must restart the whole chain on a crash.
+    """
 
     succeeded: bool
     payload: bytes | None = None  # data the device returned on success (-> shared context)
     reason: str | None = None  # human-readable explanation on failure
+    crashed: bool = False  # a failure that also left the device unusable (panic / reboot)
 
     @classmethod
     def ok(cls, payload: bytes | None = None) -> StageResult:
@@ -23,7 +29,13 @@ class StageResult:
 
     @classmethod
     def fail(cls, reason: str) -> StageResult:
+        """A clean logical failure — the device is intact and the stage may be retried in place."""
         return cls(succeeded=False, reason=reason)
+
+    @classmethod
+    def crash(cls, reason: str) -> StageResult:
+        """A failure that also crashed the device — the chain must restart on a fresh connection."""
+        return cls(succeeded=False, reason=reason, crashed=True)
 
 
 class AttackStatus(Enum):
