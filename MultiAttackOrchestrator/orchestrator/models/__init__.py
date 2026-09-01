@@ -8,6 +8,14 @@ from orchestrator.models.device import (
 )
 from orchestrator.models.extraction import ExtractionMode, ExtractionRequest
 from orchestrator.models.phases import OrchestrationPhase
+from orchestrator.models.results import (
+    AttackResult,
+    AttackStatus,
+    ExtractionOutcome,
+    FileResult,
+    MultiAttackResult,
+    StageResult,
+)
 
 __all__ = [
     "OrchestrationPhase",
@@ -17,4 +25,10 @@ __all__ = [
     "SingleAttackSharedContext",
     "ExtractionMode",
     "ExtractionRequest",
+    "StageResult",
+    "AttackStatus",
+    "AttackResult",
+    "FileResult",
+    "ExtractionOutcome",
+    "MultiAttackResult",
 ]
