@@ -47,22 +47,29 @@ exact outcomes ("stage 2 fails once then succeeds", "connection drops on stage 3
 ### Ranking metric
 
 An attack's overall score = **the product of its stages' success probabilities** (treating stages
-as independent events). The resolver ranks compatible attacks by this value, descending. Real
-tools also weigh *cost of failure* (some attacks burn a limited passcode-attempt counter and can
-wipe the device) and *yield* (how much data you get) — we simplify to probability and note the
-tradeoff in the README. The `max_restarts` budget per attack is our nod to cost-of-failure: a
-cheap-to-retry attack tolerates restarts; an expensive one sets it to 0.
+as independent events). The resolver ranks compatible attacks by this value, descending.
 
-### Two kinds of failure, handled differently
+This is a deliberate simplification. Real tools weigh at least two more axes we don't model:
+**yield** (how much of the filesystem an attack actually reaches — keychain-only vs. full image)
+and **wipe-risk** (a failed passcode attempt can increment iOS's attempt counter and *destroy the
+evidence* — a far harder constraint than "costs time to retry"). The per-attack `max_restarts`
+budget is a partial nod to the latter: a cheap, unpatchable bootrom attack tolerates many restarts;
+a passcode attack that risks a wipe sets it to 0. We note these tradeoffs here and in the README
+rather than build a multi-axis scorer.
+
+### Kinds of failure, handled differently
 
 | Kind | How it appears | Orchestrator reaction |
 |------|----------------|-----------------------|
-| **Logical stage failure** (exploit didn't land) | `run_stage()` returns a "failed" verdict | If `crashes_on_failure=False`: retry in place up to `max_retries`, then give up on this attack. If `crashes_on_failure=True`: reconnect + restart the whole chain (bounded by `max_restarts`). |
-| **Connection fault** (device stopped responding) | `ConnectionLostError` raised | Reconnect + restart the whole chain (bounded by `max_restarts`); if exhausted, give up on this attack. |
+| **Clean stage failure** (exploit missed, device intact) | `run_stage()` returns `succeeded=False, crashed=False` | Retry in place up to `max_retries`, then give up on this attack. |
+| **Crashing stage failure** (exploit failed *and* panicked the device) | `run_stage()` returns `succeeded=False, crashed=True` | Reconnect + restart the whole chain (bounded by `max_restarts`); if exhausted, give up. |
+| **Connection fault** (device stopped responding / timed out) | `ConnectionLostError` raised (incl. `ConnectionTimeout`) | Same as a crash: reconnect + restart the whole chain (bounded by `max_restarts`); if exhausted, give up. |
 
-A logical failure is a valid protocol response ("nope"); a connection fault is a broken pipe.
-Keeping them on separate channels (return value vs. exception) is deliberate — they mean
-different things and the orchestrator reacts differently.
+Whether a failure crashed the device is **the device's verdict, not a fixed property of the
+stage** — the same exploit can miss cleanly on one attempt and panic the device on the next. A
+clean failure is a valid protocol response ("nope, retry"); a crash and a dropped/timed-out socket
+both mean device state can no longer be trusted, so the chain restarts. Keeping the clean-vs-crash
+verdict on the return value and transport loss on the exception channel is deliberate.
 
 ## Component map (data flow)
 
@@ -80,7 +87,7 @@ OrchestratorConfig (target + extraction request)
 │  3. AttackResolver.resolve(info, catalog) ─▶ [Attack] ranked           │
 │  4. for each candidate Attack:                                         │
 │       re-check DeviceInfo (state may have changed) ─▶ skip if unfit    │
-│       SingleAttackOrchestrator.run(attack, session, context)          │
+│       SingleAttackOrchestrator.run(attack, session)                   │
 │              │  runs stages, retry/abort/restart per policy            │
 │              ▼                                                          │
 │         AttackResult (success | failure@stage | skipped)              │

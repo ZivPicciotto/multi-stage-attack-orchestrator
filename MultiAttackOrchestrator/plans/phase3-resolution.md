@@ -40,7 +40,7 @@ KERNEL_CHAIN = Attack(
     max_restarts=1,
     stages=(
         SingleStage("Info leak",  "leak",      0.85),
-        SingleStage("Kernel R/W", "kernel_rw", 0.70, crashes_on_failure=True),  # panic on fail
+        SingleStage("Kernel R/W", "kernel_rw", 0.70),  # can panic — but that's the device's call
         SingleStage("Escalate",   "escalate",  0.90, max_retries=1),
     ),
 )
@@ -54,8 +54,10 @@ CATALOG: tuple[Attack, ...] = (BOOTROM_CHAIN, KERNEL_CHAIN, PASSCODE_CHAIN)
 ```
 
 The catalog is plain data — no behavior — so it doubles as readable documentation of "what an
-attack looks like." The metadata differences (retry budgets, `crashes_on_failure`, `max_restarts`)
-are what make phase-4's failure handling exercisable.
+attack looks like." The metadata differences (retry budgets, `max_restarts`) are what make
+phase-4's failure handling exercisable. Whether a stage like `kernel_rw` actually panics on a
+failure isn't declared here — that's the device's verdict (`StageResult.crashed`), configured on
+the fake / simulator (phase 2), not on the stage.
 
 ## `resolver.py` — AttackResolver
 

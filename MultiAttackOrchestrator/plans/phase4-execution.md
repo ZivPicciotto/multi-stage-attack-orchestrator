@@ -56,12 +56,12 @@ def _run_chain_once(self, attack, session, context) -> _ChainOutcome:
                 return _ChainOutcome.needs_restart(stage.name, f"connection lost: {e}")
             if result.succeeded:
                 break                            # advance to next stage
-            # logical failure:
-            if stage.crashes_on_failure:
-                return _ChainOutcome.needs_restart(stage.name, "stage crashed device")
+            # logical failure — the device's verdict says whether it also crashed:
+            if result.crashed:
+                return _ChainOutcome.needs_restart(stage.name, result.reason or "device crashed")
             if attempt < stage.max_retries:
                 attempt += 1
-                continue                         # retry in place, same connection
+                continue                         # clean failure: retry in place, same connection
             return _ChainOutcome.give_up(stage.name, result.reason)   # retries exhausted
     return _ChainOutcome.success()
 ```
@@ -75,17 +75,18 @@ testable and keeps the branching legible — no Python `goto` gymnastics.
 | Situation | Detected as | Reaction |
 |-----------|-------------|----------|
 | Stage succeeds | `result.succeeded` | advance to next stage |
-| Logical fail, retries left, not crash-y | `not succeeded`, `attempt < max_retries` | retry in place (same connection) |
-| Logical fail, retries exhausted, not crash-y | `attempt == max_retries` | give up on this attack |
-| Logical fail, `crashes_on_failure=True` | flag on the stage | reconnect + restart whole chain |
-| Connection drops mid-stage | `ConnectionLostError` | reconnect + restart whole chain |
+| Clean fail, retries left | `not succeeded and not crashed`, `attempt < max_retries` | retry in place (same connection) |
+| Clean fail, retries exhausted | `not crashed`, `attempt == max_retries` | give up on this attack |
+| Crashing fail | `result.crashed` | reconnect + restart whole chain |
+| Connection drops / times out mid-stage | `ConnectionLostError` | reconnect + restart whole chain |
 | Restart budget hit | `restarts >= attack.max_restarts` | give up on this attack |
 
 **Why crash and drop share the "restart" path.** Both mean *device state can no longer be
 trusted* — a panicked/rebooted device and a dead socket are the same problem: you can't continue
-from stage N, you must start clean. In-place retry is only valid for a *logical* miss that left the
-device intact. This distinction is the whole reason phase 2 keeps logical failure (a return value)
-separate from a connection fault (an exception).
+from stage N, you must start clean. In-place retry is only valid for a *clean* miss that left the
+device intact. Note the crash/clean distinction is the **device's** call (`result.crashed`), not
+the stage's — which is why it rides the return value, while transport loss rides the exception
+channel.
 
 **Why context resets on restart.** A restart re-runs stage 1 on a fresh device; any tokens a prior
 attempt wrote to the context are stale, so each chain attempt gets a new `SingleAttackSharedContext`.
@@ -96,8 +97,8 @@ attempt wrote to the context are stale, so each chain attempt gets a new `Single
 - **Retry then succeed:** a non-crash stage scripted `[FAIL, OK]` with `max_retries=1` → success,
   same connection (assert no reconnect).
 - **Retries exhausted:** `[FAIL, FAIL]` with `max_retries=1` → `FAILED` at that stage, no restart.
-- **Crash-on-failure restarts:** a `crashes_on_failure=True` stage fails on connection #1, second
-  connection scripted all-`OK` → success with `restarts_used=1` (assert `session.reconnect` fired).
+- **Crash restarts:** a stage scripted to return `CRASH` on connection #1, second connection
+  scripted all-`OK` → success with `restarts_used=1` (assert `session.reconnect` fired).
 - **Connection drop mid-chain:** stage scripted `DROP` → restart; assert reconnect and, if the
   fresh connection succeeds, overall success.
 - **Restart budget exhausted:** every connection drops/crashes, `max_restarts=1` → `FAILED` with

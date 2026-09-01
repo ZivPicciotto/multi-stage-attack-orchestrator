@@ -15,16 +15,20 @@ chosen with the wire protocol already in mind.
 
 ```python
 class DeviceConnection(Protocol):
+    # Every I/O method may raise ConnectionLostError (incl. ConnectionTimeout). A per-connection
+    # timeout is set at construction (see provider) so a half-open socket in Part 2 surfaces as a
+    # timeout rather than hanging forever — the framework never blocks unbounded.
     def get_device_info(self) -> DeviceInfo: ...
-    def run_stage(self, stage_id: str) -> StageResult: ...    # may raise ConnectionLostError
+    def run_stage(self, stage_id: str) -> StageResult: ...    # StageResult.crashed carries crash verdict
     def list_files(self) -> list[str]: ...
-    def read_file(self, path: str) -> bytes: ...              # may raise RemoteFileError / ConnectionLostError
+    def read_file(self, path: str) -> bytes: ...              # may also raise RemoteFileError
     def close(self) -> None: ...
 
 class DeviceError(Exception): ...
 class ConnectionLostError(DeviceError): ...   # transport died (crash / unplug / drop)
+class ConnectionTimeout(ConnectionLostError): ...  # I/O exceeded the deadline — treated as a drop
 class RemoteFileError(DeviceError): ...        # file missing or access denied (NOT fatal to session)
-class ProtocolError(DeviceError): ...          # malformed response (mostly a Part 2 concern)
+class ProtocolError(DeviceError): ...          # malformed response (framing/parse bug) — fatal to the run
 ```
 
 **Decision — `Protocol`, not `ABC`.** The Part 2 TCP client conforms structurally, without
@@ -38,37 +42,62 @@ teardown. Designing the Python interface first means the C protocol falls out of
 being reverse-engineered later. `list_files` is what makes `all_files` extraction honest — the
 client never hardcodes what's on the device.
 
-**Decision — three error classes, three meanings.** `ConnectionLostError` → the session is dead,
-reconnect. `RemoteFileError` → one file failed, keep going. `ProtocolError` → the two sides
-disagree on the format (framing bug); surfaced loudly. This is what lets the orchestrator react
-differently to "exploit missed" vs "socket died."
+**Decision — reserve a timeout now, even though the fake never needs one.** Every I/O method may
+raise `ConnectionLostError`, and `ConnectionTimeout` is a subtype of it, so the orchestrator's
+existing "reconnect + restart on connection loss" path already covers a timeout with no new
+handling. Baking the timeout into the contract in Part 1 is what keeps the promise that the seam
+doesn't change for Part 2 — where a half-open TCP socket would otherwise hang the whole framework
+and `ConnectionLostError` would never fire on its own.
+
+**Decision — four error classes, four meanings.** `ConnectionLostError`/`ConnectionTimeout` → the
+session is dead, reconnect + restart. `RemoteFileError` → one file failed, keep going.
+`ProtocolError` → the two sides disagree on the wire format; that's a bug no retry fixes, so it's
+**fatal to the whole run** and caught only at the top orchestrator (phase 6). This is what lets the
+orchestrator react differently to "exploit missed" vs "socket died" vs "we're desynced."
 
 ## `fake.py` — InMemoryDeviceConnection (the Part 1 stand-in)
 
 ```python
+@dataclass
+class DeviceState:                 # mutable — the fake models a real device that changes over time
+    model: str
+    ios_version: IOSVersion
+    battery_level: int
+    alive: bool = True             # flips False on a drop/crash; further calls raise ConnectionLostError
+    unlocked: bool = False         # set True when a chain completes
+    filesystem: dict[str, bytes] = field(default_factory=dict)
+
 class InMemoryDeviceConnection:            # structurally a DeviceConnection
-    def __init__(self, info: DeviceInfo,
-                 filesystem: dict[str, bytes],
-                 behavior: "Behavior"): ...
+    def __init__(self, state: DeviceState, behavior: "Behavior", timeout: float | None = None): ...
 ```
 
-`Behavior` controls stage outcomes and drops, in two modes:
+**The fake holds mutable `DeviceState`, not a frozen snapshot.** This matters: several headline
+tests depend on state *changing* — `get_device_info()` must be able to report a lower battery on a
+re-check (phase 6's state-drift test), and a crash/drop must actually flip `alive` so the next call
+fails. A static snapshot would make those tests fiction. `get_device_info()` reads the *current*
+state each call; `run_stage`/`read_file` may mutate it (drain battery, set `unlocked`, kill the
+device). A `DeviceState` can be shared across the sequence of connections a provider hands out, so
+state persists across a reconnect the way a real device would.
+
+`Behavior` decides each `run_stage` verdict and can mutate the state, in two modes:
 
 - **Scripted (default for tests):** a per-`stage_id` queue of outcomes, e.g.
-  `{"bootrom": [OK], "kernel": [FAIL, OK], "escalate": [DROP]}`. `run_stage` pops the next one;
-  `DROP` raises `ConnectionLostError`. Fully deterministic — every failure test asserts an exact
-  path, no luck involved.
-- **Probabilistic (for the demo):** each stage has a success prob + drop prob, driven by a
+  `{"bootrom": [OK], "kernel": [FAIL, CRASH], "escalate": [DROP]}`. `run_stage` pops the next:
+  `OK`→`StageResult.ok(payload)`, `FAIL`→`StageResult.fail(...)` (device intact), `CRASH`→
+  `StageResult.crash(...)` **and sets `alive=False`**, `DROP`→raises `ConnectionLostError`. Fully
+  deterministic — every failure test asserts an exact path, no luck involved.
+- **Probabilistic (for the demo):** per-stage success/crash/drop probabilities driven by a
   **seeded** `random.Random`, so even "random" runs are reproducible.
 
-`read_file` returns bytes from the virtual filesystem or raises `RemoteFileError`; it can also be
-scripted to drop mid-extraction (to exercise the phase-5 partial case). After a `DROP`, the
-instance marks itself dead and every further call raises `ConnectionLostError` — a real dropped
-socket doesn't recover, and neither should the fake.
+`read_file` returns bytes from `state.filesystem` or raises `RemoteFileError`; it can also be
+scripted to drop mid-extraction (to exercise the phase-5 partial case). Once `alive` is False —
+after a `CRASH` or `DROP` — every further call raises `ConnectionLostError`; a real dead socket
+doesn't recover, and neither should the fake.
 
-**Why the fake mirrors the simulator's job:** in Part 1 the fake *is* the authority on outcomes,
-exactly as the C simulator will be in Part 2. Same interface, same failure vocabulary — so the
-orchestration code can't tell them apart, which is the whole point.
+**Why the fake mirrors the simulator's job:** in Part 1 the fake *is* the authority on outcomes
+(success / clean-fail / crash / drop) and on device state, exactly as the C simulator will be in
+Part 2. Same interface, same failure vocabulary — so the orchestration code can't tell them apart,
+which is the whole point.
 
 ## `provider.py` — DeviceConnectionProvider
 
@@ -118,11 +147,16 @@ class DeviceInfoProvider:
         return connection.get_device_info()   # thin today; the seam for enrichment later
 ```
 
-**Decision — keep it, thin.** It's the single place that answers "what device attributes does the
-framework need, and how do we obtain them." Today it delegates to one call; it's where re-checking
-state routes through, and where future enrichment (deriving chip generation from model, combining
-multiple device queries) would live. A named component now beats threading raw `get_device_info()`
-calls everywhere later.
+**Decision — keep it, but it earns its place via re-checking, not enrichment.** A fair critique is
+that this looks like a pointless one-line wrapper. Its real job is that it's the **single point
+that re-reads live device state before every attack attempt** (phase 6) — and because the fake now
+holds *mutable* state, that re-read genuinely returns different data as battery drains or the device
+reboots, which is what drives the state-drift skip logic. Centralizing "what attributes the
+framework needs and when we re-read them" in one component (rather than scattering
+`get_device_info()` calls) is what makes that behavior testable and gives future enrichment
+(deriving chip generation from model, combining multiple device queries) one obvious home. If it
+never grew past this, inlining it would be reasonable — we keep it because re-check-before-attempt
+is a real, tested responsibility, not a hypothetical one.
 
 ## Tests (`test_connection.py`)
 

@@ -90,11 +90,10 @@ class SingleStage:
     name: str
     stage_id: str                 # command sent to the device to run this step
     success_probability: float    # ATTACKER'S ESTIMATE — used only for ranking
-    max_retries: int = 0          # in-place retries on logical failure
-    crashes_on_failure: bool = False  # if True, a failure means restart the whole chain
+    max_retries: int = 0          # ADDITIONAL in-place attempts after the first, on a clean failure
 
     def attempt(self, connection, context: SingleAttackSharedContext) -> "StageResult":
-        result = connection.run_stage(self.stage_id)    # device decides reality
+        result = connection.run_stage(self.stage_id)    # device decides reality (incl. result.crashed)
         if result.succeeded and result.payload is not None:
             context.set(self.name, result.payload)      # stash payload for later stages
         return result
@@ -107,10 +106,17 @@ class Attack:
     requirements: DeviceCompatibilityReqs
     max_restarts: int = 1          # full-chain restarts allowed (cost-of-failure knob)
     description: str = ""
+    def __post_init__(self):
+        if not self.stages:        # a zero-stage attack would rank as prob 1.0 (math.prod(()))
+            raise ValueError(f"attack {self.id!r} must have at least one stage")
     @property
     def overall_probability(self) -> float:   # product of stage probabilities
         return math.prod(s.success_probability for s in self.stages)
 ```
+
+**Note — there is no `crashes_on_failure` on the stage.** Whether a failure crashes the device is
+the *device's* verdict (`StageResult.crashed`), not fixed stage metadata — see the results section
+and the "one verdict type" decision below.
 
 **Decision — `SingleStage` is a concrete class, not an ABC.** The common stage is pure metadata +
 a generic `attempt()` that sends one command and maps the verdict. Making it abstract would force
@@ -119,9 +125,9 @@ subclass and override `attempt()`. This keeps the polymorphism in *data* (the st
 it belongs.
 
 **Decision — `attempt()` lets `ConnectionLostError` propagate.** Catching it here would blur the
-stage/orchestrator split. The stage handles only the two *logical* outcomes (returning the
-connection's `StageResult`, after stashing any payload into the context); the orchestrator owns
-the transport-fault reaction.
+stage/orchestrator split. The stage handles only the *logical* verdicts the device returns
+(success / clean failure / crash — passing the `StageResult` straight through after stashing any
+payload); the orchestrator owns the transport-fault reaction.
 
 ## `results.py` — the result vocabulary
 
@@ -131,10 +137,13 @@ class StageResult:       # one stage attempt's verdict — returned by the conne
     succeeded: bool
     payload: bytes | None = None   # data the device handed back on success (-> SingleAttackSharedContext)
     reason: str | None = None      # human-readable explanation on failure
+    crashed: bool = False          # a failure that also left the device unusable (panic / reboot)
     @classmethod
-    def ok(cls, payload=None): ...
+    def ok(cls, payload=None): ...      # succeeded
     @classmethod
-    def fail(cls, reason): ...
+    def fail(cls, reason): ...          # clean failure — device intact, retryable in place
+    @classmethod
+    def crash(cls, reason): ...         # failure that crashed the device — chain must restart
 
 @dataclass(frozen=True)
 class AttackResult:
@@ -178,7 +187,7 @@ class MultiAttackResult:
 `run_stage()`, and the stage passes it straight through (after stashing any payload into the
 context). We considered a separate wire-level `StageOutcome` vs. framework-level `StageResult`
 split, but at this scale it's ceremony — a single type carrying `succeeded` + `payload` + `reason`
-serves both. `StageResult` deliberately does **not** carry a stage name: the orchestrator always
++ `crashed` serves both. `StageResult` deliberately does **not** carry a stage name: the orchestrator always
 knows which stage it invoked (it holds the `SingleStage`), so it reads `stage.name` for
 `AttackResult.failed_stage` rather than duplicating it in every result.
 
@@ -212,6 +221,9 @@ fail deep inside the extractor.
 - `IOSVersion.parse` round-trips; ordering (`15.4 < 15.4.1 < 16.0`).
 - `DeviceCompatibilityReqs.matches`: below `min_ios`, above `max_ios`, wrong model, low battery,
   and the all-pass case; `reasons_incompatible` lists the right reasons.
-- `Attack.overall_probability` equals the product; single-stage and empty-guard behavior.
+- `Attack.overall_probability` equals the product; single-stage case; `__post_init__` rejects a
+  zero-stage attack (guards the `math.prod(()) == 1.0` trap).
+- `StageResult.ok`/`fail`/`crash` set `succeeded`/`crashed` correctly (clean vs crashing failure).
 - `ExtractionRequest.__post_init__` rejects single-with-0-paths, unlock-with-paths, etc.
-- `ExtractionOutcome.succeeded`/`partial` across all/none/some-succeeded.
+- `ExtractionOutcome.succeeded`/`partial` across all/none/some-succeeded, incl. all-failed multi
+  (`succeeded=False, partial=False`) and empty `all_files` (`succeeded=True`).

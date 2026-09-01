@@ -72,6 +72,20 @@ def _read_paths(self, mode, paths, connection) -> ExtractionOutcome:
 `ExtractionOutcome.partial` is `True` in both the "8 of 10 files" and "dropped after 5" cases, so
 callers can distinguish complete / partial / empty without inspecting every `FileResult`.
 
+**Success semantics, stated explicitly** (`succeeded` = `all(f.succeeded)` when there are files,
+and `error is None`):
+
+| Case | `succeeded` | `partial` |
+|------|-------------|-----------|
+| every file read | ✓ | ✗ |
+| some read, some failed | ✗ | ✓ |
+| **every file failed** (e.g. all paths denied) | ✗ | ✗ — total failure, not partial |
+| mid-pull `ConnectionLostError` (some gathered) | ✗ (`error` set) | ✓ |
+| `all_files` on an empty device (`list_files` → `[]`) | ✓ (vacuously — listing succeeded, nothing to pull) | ✗ |
+
+An all-failed multi-pull is a **complete failure, not a partial** — `partial` requires at least one
+success — so a caller checking `partial` won't mistake "got nothing" for "got some."
+
 ## `unlock` mode
 
 The attack *is* the unlock. `UNLOCK` mode means the caller only wanted access, not files, so

@@ -52,9 +52,11 @@ scripted `FakeConnectionProvider` and the real logic runs unchanged. In Part 2, 
 ```python
 def run(self, config) -> MultiAttackResult:
     attempts: list[AttackResult] = []
+    phase = OrchestrationPhase.CONNECTING
     with DeviceSession(self.provider, config.target) as session:          # CONNECTING; owns lifecycle
         try:
-            info = self.info_provider.get_info(session.connection)        # GATHERING_INFO
+            phase = OrchestrationPhase.GATHERING_INFO
+            info = self.info_provider.get_info(session.connection)        # reads LIVE (mutable) state
         except ConnectionLostError as e:
             return MultiAttackResult.failure(config.request.mode,
                        final_phase=GATHERING_INFO, error=str(e), attempts=())
@@ -65,32 +67,42 @@ def run(self, config) -> MultiAttackResult:
                        final_phase=RESOLVING_ATTACKS,
                        error="no compatible attack for this device", attempts=())
 
-        for attack in candidates:
-            info = self._recheck(session)                                 # re-read state per attempt
-            if info is None:                                              # couldn't even re-read
-                attempts.append(AttackResult.skipped(attack.id, "device unreachable"))
-                continue
-            if not attack.requirements.matches(info):                     # state drifted (e.g. battery)
-                attempts.append(AttackResult.skipped(attack.id,
-                                    "; ".join(attack.requirements.reasons_incompatible(info))))
-                continue
+        try:
+            for attack in candidates:
+                info = self._recheck(session)                             # re-read CURRENT state per attempt
+                if info is None:                                          # couldn't even re-read
+                    attempts.append(AttackResult.skipped(attack.id, "device unreachable"))
+                    continue
+                if not attack.requirements.matches(info):                 # state drifted (e.g. battery drained)
+                    attempts.append(AttackResult.skipped(attack.id,
+                                        "; ".join(attack.requirements.reasons_incompatible(info))))
+                    continue
 
-            result = self.single.run(attack, session)                    # RUNNING_ATTACK
-            attempts.append(result)
-            if result.succeeded:
-                extraction = self.extractor.extract(config.request, session.connection)  # EXTRACTING_DATA
-                return MultiAttackResult.success(
-                    config.request.mode, winning_attack=attack.id,
-                    attempts=tuple(attempts), extraction=extraction,
-                    final_phase=DONE)
+                phase = OrchestrationPhase.RUNNING_ATTACK
+                result = self.single.run(attack, session)
+                attempts.append(result)
+                if result.succeeded:
+                    phase = OrchestrationPhase.EXTRACTING_DATA
+                    extraction = self.extractor.extract(config.request, session.connection)
+                    return MultiAttackResult.success(
+                        config.request.mode, winning_attack=attack.id,
+                        attempts=tuple(attempts), extraction=extraction,
+                        final_phase=DONE)
+        except ProtocolError as e:                                        # desync — no retry fixes it
+            return MultiAttackResult.failure(config.request.mode,
+                       final_phase=phase, error=f"protocol desync: {e}",
+                       attempts=tuple(attempts))
 
         return MultiAttackResult.failure(config.request.mode,             # all tried, none worked
                    final_phase=RUNNING_ATTACK,
                    error="all viable attacks failed", attempts=tuple(attempts))
 ```
 
-`_recheck(session)` re-reads device info, reconnecting once via the session if the read hits a
-`ConnectionLostError`; returns `None` if it still can't reach the device.
+`_recheck(session)` re-reads device info **from the current (mutable) device state**, reconnecting
+once via the session if the read hits a `ConnectionLostError`; returns `None` if it still can't
+reach the device. Because the fake mutates its `DeviceState` (phase 2), a drained battery or a
+rebooted device genuinely shows up here — that's what makes the state-drift skip real rather than
+scripted.
 
 ### Decisions
 
@@ -104,7 +116,11 @@ def run(self, config) -> MultiAttackResult:
 - **The session owns the connection; `run` owns the session.** `with DeviceSession(...)` guarantees
   the connection is closed on every exit path — success, all-fail, or exception. This is the
   concrete form of "the top orchestrator owns the connection lifecycle."
-- **Every path returns a `MultiAttackResult`.** No exceptions escape `run`. The result's
+- **Every path returns a `MultiAttackResult`.** No `DeviceError` escapes `run`. Connection loss is
+  handled where it occurs (restart in the sub-orchestrator, reconnect in `_recheck`, a
+  `GATHERING_INFO` failure at the top). `ProtocolError` — the two sides desynced on the wire — is a
+  bug no retry fixes, so it's caught once at the top level and turned into a `FAILED` result at
+  whatever `phase` we'd reached, rather than being allowed to crash the run. The result's
   `final_phase` says how far we got, `attempts` records every attack tried and where each failed,
   and `extraction` carries the (possibly partial) data. That's the complete, inspectable report the
   prompt asks for.
@@ -131,3 +147,5 @@ reading tests, and becomes the template for the Part 2 run against the real simu
   is raised mid-run (assert `close` called on every path).
 - **Connection drop during info-gathering:** first `get_info` raises → failure with
   `final_phase=GATHERING_INFO`.
+- **Protocol desync is fatal, not retried:** a stage scripted to raise `ProtocolError` → failure
+  with `final_phase=RUNNING_ATTACK` and a "protocol desync" error; no restart attempted.
