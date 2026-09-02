@@ -187,6 +187,28 @@ def scenario_extraction_modes() -> None:
     _run(_all_compatible_device(filesystem), behavior, ExtractionRequest(ExtractionMode.ALL_FILES))
 
 
+def scenario_context_dependency() -> None:
+    _banner(
+        "Scenario 8 — a stage needs an earlier stage's payload before it will even touch the "
+        "device: SingleAttackSharedContext actually being read, not just written"
+    )
+    # iOS >= 16 keeps this isolated to KEYBAG_CHAIN (+ PASSCODE_CHAIN as an always-viable
+    # fallback) — none of the other catalog attacks' iOS ceilings reach this high.
+    logger.info("--- 8a: leak returns its payload — the dependent stage reads it and proceeds ---")
+    state_a = DeviceState(model="iPhone15,2", ios_version=IOSVersion(17, 0), battery_level=80)
+    behavior_a = ScriptedBehavior(
+        stage_events={"class_key_leak": [StageResult.ok(payload=b"<leaked class keys>")]}
+    )
+    _run(state_a, behavior_a, ExtractionRequest(ExtractionMode.UNLOCK))
+
+    logger.info(
+        "--- 8b: leak succeeds but returns no payload — the dependent stage refuses to even "
+        "attempt the device, and the run falls through to PASSCODE_CHAIN ---"
+    )
+    state_b = DeviceState(model="iPhone15,2", ios_version=IOSVersion(17, 0), battery_level=80)
+    _run(state_b, ScriptedBehavior(), ExtractionRequest(ExtractionMode.UNLOCK))
+
+
 SCENARIOS = [
     scenario_happy_path,
     scenario_retry_then_succeed,
@@ -196,6 +218,7 @@ SCENARIOS = [
     scenario_state_drift_skip,
     scenario_all_attacks_fail,
     scenario_extraction_modes,
+    scenario_context_dependency,
 ]
 
 

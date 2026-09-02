@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -12,6 +13,8 @@ from orchestrator.models.results import StageResult
 if TYPE_CHECKING:
     from orchestrator.connection.base import DeviceConnection
     from orchestrator.models.context import SingleAttackSharedContext
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -33,6 +36,35 @@ class SingleStage:
         if result.succeeded and result.payload is not None:
             context.set(self.name, result.payload)
         return result
+
+
+@dataclass
+class ContextDependentStage(SingleStage):
+    """A stage that cannot even ask the device to run without an earlier stage's payload.
+
+    `requires` names the earlier stage (by its `.name`) whose stashed payload this stage
+    consumes — e.g. a leaked class-key blob a later stage needs to unwrap a keybag. If that key
+    isn't in the shared context yet, the device is never contacted: this is a clean logical
+    failure (StageResult.fail), not a connection fault, so the orchestrator's ordinary
+    retry/restart/fallback handling applies unchanged — no new control-flow path needed.
+    """
+
+    requires: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.requires:
+            raise ValueError(f"stage {self.name!r} must set requires=<earlier stage name>")
+
+    def attempt(
+        self,
+        connection: DeviceConnection,
+        context: SingleAttackSharedContext,
+    ) -> StageResult:
+        if self.requires not in context:
+            reason = f"missing required context: {self.requires!r} was never provided"
+            logger.debug("stage %r: %s — skipping the device entirely", self.name, reason)
+            return StageResult.fail(reason)
+        return super().attempt(connection, context)
 
 
 @dataclass(frozen=True)

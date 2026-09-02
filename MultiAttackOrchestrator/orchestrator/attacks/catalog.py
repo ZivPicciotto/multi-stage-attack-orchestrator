@@ -1,6 +1,6 @@
 """A small, deliberately overlapping catalog of sample attacks.
 
-Three attacks with different real-world profiles, so attack selection actually has work to do:
+Four attacks with different real-world profiles, so attack selection actually has work to do:
 
 - BOOTROM_CHAIN: a hardware bug (checkm8-style). Unpatchable, cheap to retry — a failed attempt
   doesn't cost anything, so it tolerates several full-chain restarts.
@@ -8,11 +8,14 @@ Three attacks with different real-world profiles, so attack selection actually h
   device (the device's call at runtime, not declared here — see StageResult.crashed).
 - PASSCODE_CHAIN: brute force. Low success probability and a failed attempt burns a limited
   attempt counter in reality, so it never restarts (max_restarts=0) — modeling cost-of-failure.
+- KEYBAG_CHAIN: a leak-then-unwrap pair where the second stage genuinely needs the first stage's
+  output. Demonstrates SingleAttackSharedContext being read, not just written — see
+  ContextDependentStage. Scoped to iOS >= 16 so it never overlaps the other three in the demo.
 """
 
 from __future__ import annotations
 
-from orchestrator.models.attack import Attack, SingleStage
+from orchestrator.models.attack import Attack, ContextDependentStage, SingleStage
 from orchestrator.models.device import DeviceCompatibilityReqs, IOSVersion
 
 BOOTROM_CHAIN = Attack(
@@ -58,4 +61,20 @@ PASSCODE_CHAIN = Attack(
     ),
 )
 
-CATALOG: tuple[Attack, ...] = (BOOTROM_CHAIN, KERNEL_CHAIN, PASSCODE_CHAIN)
+KEYBAG_CHAIN = Attack(
+    id="keybag-recovery",
+    description="Class-key leak feeds a keybag unwrap that cannot run without it.",
+    requirements=DeviceCompatibilityReqs(min_ios=IOSVersion(16, 0), min_battery=20),
+    max_restarts=1,
+    stages=(
+        SingleStage("Class key leak", "class_key_leak", success_probability=0.80),
+        ContextDependentStage(
+            "Keybag unwrap",
+            "keybag_unwrap",
+            success_probability=0.70,
+            requires="Class key leak",
+        ),
+    ),
+)
+
+CATALOG: tuple[Attack, ...] = (BOOTROM_CHAIN, KERNEL_CHAIN, PASSCODE_CHAIN, KEYBAG_CHAIN)

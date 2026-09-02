@@ -5,7 +5,13 @@ from __future__ import annotations
 from orchestrator.connection import DROP, MockConnectionProvider, ScriptedBehavior
 from orchestrator.connection.session import DeviceSession
 from orchestrator.execution import SingleAttackOrchestrator
-from orchestrator.models import Attack, DeviceCompatibilityReqs, SingleStage, StageResult
+from orchestrator.models import (
+    Attack,
+    ContextDependentStage,
+    DeviceCompatibilityReqs,
+    SingleStage,
+    StageResult,
+)
 from tests.conftest import make_session
 
 orch = SingleAttackOrchestrator()
@@ -115,3 +121,36 @@ class TestSingleAttackOrchestrator:
             result = orch.run(attack, session)
         assert result.succeeded and result.restarts_used == 1
         assert provider.stage_calls.count("first") == 2  # once before the crash, once after restart
+
+    def test_dependent_stage_consumes_earlier_payload(self, device_state):
+        attack = Attack(
+            "keybag",
+            (
+                SingleStage("leak", "leak", 0.9),
+                ContextDependentStage("unwrap", "unwrap", 0.9, requires="leak"),
+            ),
+            DeviceCompatibilityReqs(),
+        )
+        behavior = ScriptedBehavior(stage_events={"leak": [StageResult.ok(payload=b"class-keys")]})
+        with make_session(device_state, behavior) as session:
+            result = orch.run(attack, session)
+        assert result.succeeded
+
+    def test_dependent_stage_skips_device_when_context_missing(self, device_state):
+        # "leak" succeeds but returns no payload, so nothing is ever stashed in the context —
+        # "unwrap" must refuse before touching the device at all, not merely fail after trying.
+        attack = Attack(
+            "keybag",
+            (
+                SingleStage("leak", "leak", 0.9),
+                ContextDependentStage("unwrap", "unwrap", 0.9, requires="leak"),
+            ),
+            DeviceCompatibilityReqs(),
+        )
+        provider = _CountingProvider(device_state, ScriptedBehavior())
+        with DeviceSession(provider, target=None) as session:
+            result = orch.run(attack, session)
+        assert not result.succeeded
+        assert result.failed_stage == "unwrap"
+        assert "missing required context" in result.reason
+        assert "unwrap" not in provider.stage_calls

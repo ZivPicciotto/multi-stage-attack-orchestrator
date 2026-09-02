@@ -8,6 +8,7 @@ from orchestrator.models import (
     Attack,
     AttackResult,
     AttackResultType,
+    ContextDependentStage,
     DeviceCompatibilityReqs,
     DeviceInfo,
     ExtractionMode,
@@ -147,6 +148,12 @@ class TestAttack:
     def test_rejects_empty_stages(self):
         with pytest.raises(ValueError):
             Attack("a", (), DeviceCompatibilityReqs())
+
+
+class TestContextDependentStage:
+    def test_rejects_missing_requires(self):
+        with pytest.raises(ValueError):
+            ContextDependentStage("unwrap", "unwrap_id", 0.7)
 
 
 class TestFileResult:
