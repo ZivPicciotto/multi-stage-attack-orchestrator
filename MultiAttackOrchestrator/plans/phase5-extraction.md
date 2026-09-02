@@ -99,7 +99,7 @@ calls `extract(request, conn)` after a win.
 - **single_file, missing path:** → one failed `FileResult`, `outcome.succeeded is False`.
 - **multi_files, partial:** 3 paths, middle one missing → 3 results, `partial is True`,
   `succeeded is False`, the two good ones carry data.
-- **all_files:** fake vFS has N files → `list_files` drives N reads, all present → success.
+- **all_files:** mock vFS has N files → `list_files` drives N reads, all present → success.
 - **mid-extraction drop:** `read_file` scripted to raise `ConnectionLostError` on the 2nd of 4
   paths → outcome has the first result, an `error`, and no reconnect attempt.
 - **unlock:** returns empty successful outcome, performs no reads (assert `read_file` not called).

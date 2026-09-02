@@ -44,7 +44,7 @@ class MultiAttackOrchestrator:
 ```
 
 Dependencies are injected (provider, resolver, sub-orchestrator, extractor), so tests supply a
-scripted `FakeConnectionProvider` and the real logic runs unchanged. In Part 2, pass a
+scripted `MockConnectionProvider` and the real logic runs unchanged. In Part 2, pass a
 `TcpConnectionProvider` — nothing else moves.
 
 ### The flow (phases annotated)
@@ -100,7 +100,7 @@ def run(self, config) -> MultiAttackResult:
 
 `_recheck(session)` re-reads device info **from the current (mutable) device state**, reconnecting
 once via the session if the read hits a `ConnectionLostError`; returns `None` if it still can't
-reach the device. Because the fake mutates its `DeviceState` (phase 2), a drained battery or a
+reach the device. Because the mock mutates its `DeviceState` (phase 2), a drained battery or a
 rebooted device genuinely shows up here — that's what makes the state-drift skip real rather than
 scripted.
 
@@ -127,12 +127,12 @@ scripted.
 
 ## `demo.py` (optional but recommended)
 
-A tiny `__main__` that builds a probabilistic `FakeConnectionProvider`, a sample
+A tiny `__main__` that builds a probabilistic `MockConnectionProvider`, a sample
 `OrchestratorConfig` (e.g. `all_files`), runs the orchestrator, and pretty-prints the
 `MultiAttackResult`. Gives a reviewer a one-command way to see the whole thing move without
 reading tests, and becomes the template for the Part 2 run against the real simulator.
 
-## Tests (`test_orchestrator.py`) — end-to-end through the fake
+## Tests (`test_orchestrator.py`) — end-to-end through the mock
 
 - **No compatible attack:** device fits nothing → failure, `final_phase=RESOLVING_ATTACKS`, empty
   attempts.

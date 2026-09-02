@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from orchestrator.connection import DROP, FakeConnectionProvider, ScriptedBehavior
+from orchestrator.connection import DROP, MockConnectionProvider, ScriptedBehavior
 from orchestrator.connection.session import DeviceSession
 from orchestrator.execution import SingleAttackOrchestrator
 from orchestrator.models import Attack, DeviceCompatibilityReqs, SingleStage, StageResult
@@ -11,7 +11,7 @@ from tests.conftest import make_session
 orch = SingleAttackOrchestrator()
 
 
-class _CountingProvider(FakeConnectionProvider):
+class _CountingProvider(MockConnectionProvider):
     """Wraps every connection's run_stage so calls survive across a reconnect (a fresh
     connection object, but the same underlying provider) — needed to prove a restart
     re-attempts every stage rather than resuming mid-chain."""

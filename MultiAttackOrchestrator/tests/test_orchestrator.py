@@ -1,9 +1,9 @@
-"""Phase 6: MultiAttackOrchestrator — the full flow, end-to-end against the fake."""
+"""Phase 6: MultiAttackOrchestrator — the full flow, end-to-end against the mock."""
 
 from __future__ import annotations
 
 from orchestrator.config import ConnectionTarget, OrchestratorConfig
-from orchestrator.connection import DeviceState, FakeConnectionProvider, ScriptedBehavior
+from orchestrator.connection import DeviceState, MockConnectionProvider, ScriptedBehavior
 from orchestrator.connection.base import ConnectionLostError, ProtocolError
 from orchestrator.models import (
     Attack,
@@ -28,7 +28,7 @@ A_NEEDS_BATTERY = Attack(
 
 
 def run(state, behavior, catalog, mode=ExtractionMode.UNLOCK, paths=()):
-    provider = FakeConnectionProvider(state, behavior)
+    provider = MockConnectionProvider(state, behavior)
     orch = MultiAttackOrchestrator(provider, resolver=AttackResolver(catalog))
     return orch.run(OrchestratorConfig(TARGET, ExtractionRequest(mode, paths)))
 
@@ -80,7 +80,7 @@ class TestMultiAttackOrchestrator:
         state = DeviceState("m", IOSVersion(14, 0), battery_level=60)
         closed = []
 
-        class TrackedProvider(FakeConnectionProvider):
+        class TrackedProvider(MockConnectionProvider):
             def connect(self, target):
                 conn = super().connect(target)
                 orig_close = conn.close
@@ -96,7 +96,7 @@ class TestMultiAttackOrchestrator:
         state = DeviceState("m", IOSVersion(14, 0), battery_level=60)
         closed = []
 
-        class TrackedProvider(FakeConnectionProvider):
+        class TrackedProvider(MockConnectionProvider):
             def connect(self, target):
                 conn = super().connect(target)
                 orig_close = conn.close
@@ -150,7 +150,7 @@ class TestMultiAttackOrchestrator:
 
         class DesyncProvider:
             def __init__(self, state):
-                self._inner = FakeConnectionProvider(state, ScriptedBehavior())
+                self._inner = MockConnectionProvider(state, ScriptedBehavior())
 
             def connect(self, target):
                 return DesyncConnection(self._inner.connect(target))

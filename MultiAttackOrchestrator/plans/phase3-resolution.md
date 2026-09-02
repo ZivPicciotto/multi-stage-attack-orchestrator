@@ -57,7 +57,7 @@ The catalog is plain data — no behavior — so it doubles as readable document
 attack looks like." The metadata differences (retry budgets, `max_restarts`) are what make
 phase-4's failure handling exercisable. Whether a stage like `kernel_rw` actually panics on a
 failure isn't declared here — that's the device's verdict (`StageResult.crashed`), configured on
-the fake / simulator (phase 2), not on the stage.
+the mock / simulator (phase 2), not on the stage.
 
 ## `resolver.py` — AttackResolver
 

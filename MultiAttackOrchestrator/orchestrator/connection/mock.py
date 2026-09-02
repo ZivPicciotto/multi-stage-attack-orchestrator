@@ -71,7 +71,7 @@ class InMemoryDeviceConnection:
     ) -> None:
         self._state = state
         self._behavior = behavior
-        self._timeout = timeout  # unused by the fake; carried for interface parity with Part 2
+        self._timeout = timeout  # unused by the mock; carried for interface parity with Part 2
 
     def _require_alive(self) -> None:
         if not self._state.alive:

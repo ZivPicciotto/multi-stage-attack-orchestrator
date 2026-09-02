@@ -1,12 +1,12 @@
 # Phase 2 — Device connection layer
 
 **Goal:** define the one seam between the framework and "the device," and back it with a
-scriptable in-memory fake. This is the interface Part 2's TCP client must satisfy, so its shape is
+scriptable in-memory mock. This is the interface Part 2's TCP client must satisfy, so its shape is
 chosen with the wire protocol already in mind.
 
 **Depends on:** phase 1. **Unlocks:** phases 3–6 (everything that touches a device).
 
-**Files:** `orchestrator/connection/{base,fake,provider,session}.py`,
+**Files:** `orchestrator/connection/{base,mock,provider,session}.py`,
 `orchestrator/device_info.py`
 
 ---
@@ -42,7 +42,7 @@ teardown. Designing the Python interface first means the C protocol falls out of
 being reverse-engineered later. `list_files` is what makes `all_files` extraction honest — the
 client never hardcodes what's on the device.
 
-**Decision — reserve a timeout now, even though the fake never needs one.** Every I/O method may
+**Decision — reserve a timeout now, even though the mock never needs one.** Every I/O method may
 raise `ConnectionLostError`, and `ConnectionTimeout` is a subtype of it, so the orchestrator's
 existing "reconnect + restart on connection loss" path already covers a timeout with no new
 handling. Baking the timeout into the contract in Part 1 is what keeps the promise that the seam
@@ -55,11 +55,11 @@ session is dead, reconnect + restart. `RemoteFileError` → one file failed, kee
 **fatal to the whole run** and caught only at the top orchestrator (phase 6). This is what lets the
 orchestrator react differently to "exploit missed" vs "socket died" vs "we're desynced."
 
-## `fake.py` — InMemoryDeviceConnection (the Part 1 stand-in)
+## `mock.py` — InMemoryDeviceConnection (the Part 1 stand-in)
 
 ```python
 @dataclass
-class DeviceState:                 # mutable — the fake models a real device that changes over time
+class DeviceState:                 # mutable — the mock models a real device that changes over time
     model: str
     ios_version: IOSVersion
     battery_level: int
@@ -71,7 +71,7 @@ class InMemoryDeviceConnection:            # structurally a DeviceConnection
     def __init__(self, state: DeviceState, behavior: "Behavior", timeout: float | None = None): ...
 ```
 
-**The fake holds mutable `DeviceState`, not a frozen snapshot.** This matters: several headline
+**The mock holds mutable `DeviceState`, not a frozen snapshot.** This matters: several headline
 tests depend on state *changing* — `get_device_info()` must be able to report a lower battery on a
 re-check (phase 6's state-drift test), and a crash/drop must actually flip `alive` so the next call
 fails. A static snapshot would make those tests fiction. `get_device_info()` reads the *current*
@@ -92,9 +92,9 @@ state persists across a reconnect the way a real device would.
 `read_file` returns bytes from `state.filesystem` or raises `RemoteFileError`; it can also be
 scripted to drop mid-extraction (to exercise the phase-5 partial case). Once `alive` is False —
 after a `CRASH` or `DROP` — every further call raises `ConnectionLostError`; a real dead socket
-doesn't recover, and neither should the fake.
+doesn't recover, and neither should the mock.
 
-**Why the fake mirrors the simulator's job:** in Part 1 the fake *is* the authority on outcomes
+**Why the mock mirrors the simulator's job:** in Part 1 the mock *is* the authority on outcomes
 (success / clean-fail / crash / drop) and on device state, exactly as the C simulator will be in
 Part 2. Same interface, same failure vocabulary — so the orchestration code can't tell them apart,
 which is the whole point.
@@ -105,7 +105,7 @@ which is the whole point.
 class DeviceConnectionProvider(Protocol):
     def connect(self, target: ConnectionTarget) -> DeviceConnection: ...
 
-class FakeConnectionProvider:   # Part 1
+class MockConnectionProvider:   # Part 1
     """Hands out fresh InMemoryDeviceConnections. Can be seeded with a *sequence* of behaviors
     so a reconnect yields a differently-behaving connection (e.g. first drops on stage 3,
     second succeeds) — required to test crash-restart."""
@@ -149,7 +149,7 @@ class DeviceInfoProvider:
 
 **Decision — keep it, but it earns its place via re-checking, not enrichment.** A fair critique is
 that this looks like a pointless one-line wrapper. Its real job is that it's the **single point
-that re-reads live device state before every attack attempt** (phase 6) — and because the fake now
+that re-reads live device state before every attack attempt** (phase 6) — and because the mock now
 holds *mutable* state, that re-read genuinely returns different data as battery drains or the device
 reboots, which is what drives the state-drift skip logic. Centralizing "what attributes the
 framework needs and when we re-read them" in one component (rather than scattering
@@ -160,11 +160,11 @@ is a real, tested responsibility, not a hypothetical one.
 
 ## Tests (`test_connection.py`)
 
-- Scripted fake: `run_stage` returns queued outcomes in order; `DROP` raises `ConnectionLostError`
+- Scripted mock: `run_stage` returns queued outcomes in order; `DROP` raises `ConnectionLostError`
   and the connection stays dead afterward.
 - `read_file` returns vFS bytes; missing path raises `RemoteFileError`; scripted mid-read drop
   raises `ConnectionLostError`.
 - `DeviceSession`: context manager opens/closes; `reconnect()` swaps to the next behavior and
   bumps `reconnect_count`.
-- `FakeConnectionProvider` hands out independent connections per `connect()`.
-- `DeviceInfoProvider.get_info` returns the fake's `DeviceInfo`.
+- `MockConnectionProvider` hands out independent connections per `connect()`.
+- `DeviceInfoProvider.get_info` returns the mock's `DeviceInfo`.

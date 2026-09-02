@@ -1,4 +1,4 @@
-"""The one contract the framework uses to talk to 'a device' — fake today, TCP in Part 2."""
+"""The one contract the framework uses to talk to 'a device' — mock today, TCP in Part 2."""
 
 from __future__ import annotations
 

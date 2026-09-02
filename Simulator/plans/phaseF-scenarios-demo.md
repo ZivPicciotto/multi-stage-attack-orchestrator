@@ -2,7 +2,7 @@
 
 **Goal:** prove the seam actually held — the same 8 scenarios from Part 1's `demo.py`, run against
 the real C simulator over a real socket, telling the same story as they did against the in-memory
-fake. This is the closing argument for the whole Part 1/Part 2 split.
+mock. This is the closing argument for the whole Part 1/Part 2 split.
 
 **Depends on:** phases D, E. **Unlocks:** Part 3 (integration tests reuse these scenario files and
 `TcpConnectionProvider` directly).
@@ -31,7 +31,7 @@ path needs no file at all — an empty `{"device": {...}, "filesystem": {}}` suf
 **Decision — these files are a direct translation, not a reinterpretation.** Every number
 (battery-drain amounts, which stage fails) is copied from `demo.py`'s existing Python scenario
 functions, not redesigned. If the translation is faithful, running scenario N through the simulator
-should produce a `MultiAttackResult` matching scenario N's fake-backed run field-for-field
+should produce a `MultiAttackResult` matching scenario N's mock-backed run field-for-field
 (`succeeded`, `winning_attack`, each attempt's `status`/`failed_stage`/`reason`).
 
 ## Cross-transport demo mode
@@ -47,7 +47,7 @@ def main() -> None:
         simulator = launch_simulator_subprocess(args.tcp_port, SCENARIOS_DIR)
         provider_factory = lambda scenario_file: TcpConnectionProvider()  # + point at the right scenario file per run
     else:
-        provider_factory = lambda _: FakeConnectionProvider(...)
+        provider_factory = lambda _: MockConnectionProvider(...)
     ...
 ```
 
@@ -72,7 +72,7 @@ to fix before calling Part 2 done, not before Part 3 starts.
 - Build: `cd Simulator && make`.
 - Run standalone: `./simulator <port> scenarios/03_crash_then_restart.json`.
 - Point Python at it: `TcpConnectionProvider()` + `ConnectionTarget(host, port)` in place of
-  `FakeConnectionProvider` — one line, per phase E.
+  `MockConnectionProvider` — one line, per phase E.
 - A one-paragraph note on the design choices worth defending in an exercise like this: config-driven
   simulator (no compiled-in stage IDs), the generated shared protocol module, crash-then-close
   semantics, and single-threaded accept loop — each with the one-line "why" already captured in

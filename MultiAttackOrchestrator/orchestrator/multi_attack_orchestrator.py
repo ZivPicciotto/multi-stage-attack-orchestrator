@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class MultiAttackOrchestrator:
     """Dependencies are injected so tests (and the demo) can supply a scripted
-    FakeConnectionProvider while the real logic runs unchanged. In Part 2, passing a
+    MockConnectionProvider while the real logic runs unchanged. In Part 2, passing a
     TcpConnectionProvider is the only thing that would need to move."""
 
     def __init__(

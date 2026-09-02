@@ -1,4 +1,4 @@
-"""Phase 1: pure model types — no I/O, no fake, just data and invariants."""
+"""Phase 1: pure model types — no I/O, no mock, just data and invariants."""
 
 from __future__ import annotations
 

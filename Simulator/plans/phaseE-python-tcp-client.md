@@ -54,8 +54,8 @@ class TcpDeviceConnection:  # structurally a DeviceConnection — same contract 
         self._sock.close()
 ```
 
-**Decision — `run_stage` maps wire responses to `StageResult` exactly like the fake does.** The
-fake's `run_stage` returns `StageResult.ok/fail/crash` directly; here the same three cases are
+**Decision — `run_stage` maps wire responses to `StageResult` exactly like the mock does.** The
+mock's `run_stage` returns `StageResult.ok/fail/crash` directly; here the same three cases are
 reconstructed from `RES_OK`/`RES_FAIL`/`RES_CRASH`. `SingleAttackOrchestrator` (Part 1, phase 4)
 never sees the difference — it only ever looks at `result.succeeded` / `result.crashed` /
 `result.reason`, all of which are populated identically regardless of transport.
@@ -130,7 +130,7 @@ class TcpConnectionProvider:  # satisfies DeviceConnectionProvider
 `SingleAttackOrchestrator`, `AttackResolver`, `DataExtractor` — none of them import or reference
 `TcpConnectionProvider` or `TcpDeviceConnection` by name; they only ever see the
 `DeviceConnectionProvider`/`DeviceConnection` Protocol types. Passing a `TcpConnectionProvider`
-into `MultiAttackOrchestrator(provider=...)` in place of a `FakeConnectionProvider` is a one-line
+into `MultiAttackOrchestrator(provider=...)` in place of a `MockConnectionProvider` is a one-line
 change in whatever constructs the orchestrator — nothing inside `orchestrator/` changes at all.
 
 ## Tests
@@ -140,7 +140,7 @@ change in whatever constructs the orchestrator — nothing inside `orchestrator/
 file, and tears it down after. Reuses the **exact same assertions** as Part 1's
 `test_connection.py` — scripted retry, crash kills the connection, reconnect revives it, battery
 drain, drop-on-read — but driving a `TcpDeviceConnection` against the real subprocess instead of
-the in-memory fake. If this test file is structurally a near-duplicate of `test_connection.py` with
+the in-memory mock. If this test file is structurally a near-duplicate of `test_connection.py` with
 the fixture swapped, that's the proof the seam held; if it needs materially different assertions,
 that's a signal something about the wire protocol doesn't actually match the `DeviceConnection`
 contract and needs fixing before Part 3.

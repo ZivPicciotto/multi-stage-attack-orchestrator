@@ -2,7 +2,7 @@
 
 **Goal:** the C equivalents of Part 1's `DeviceState` and `ScriptedBehavior` — loaded once from a
 JSON scenario file at startup, then mutated over the simulator's lifetime exactly the way the
-Python fake mutates its shared state across reconnects.
+Python mock mutates its shared state across reconnects.
 
 **Depends on:** phases A, B. **Unlocks:** phase D (handlers read/mutate this state).
 
@@ -87,10 +87,10 @@ load-bearing detail that makes "crash → reconnect → succeeds" work: `Scenari
 in `main()` and passed by pointer into every accepted connection's handler, so a queue consumed
 during connection #1 (e.g. popping a `CRASH` event) is already advanced when connection #2 asks for
 the same `stage_id` — it gets the next queued event (`OK`), exactly mirroring
-`ScriptedBehavior.stage_events` being a `dict[str, list]` shared across `FakeConnectionProvider`
+`ScriptedBehavior.stage_events` being a `dict[str, list]` shared across `MockConnectionProvider`
 connects in Part 1.
 
-**Decision — unscripted stage defaults to `OK`.** Same rule as the fake, so a scenario file only
+**Decision — unscripted stage defaults to `OK`.** Same rule as the mock, so a scenario file only
 needs to name the stages it wants to behave unusually — everything else "just works," keeping
 scenario files short and focused on what's actually being tested.
 

@@ -1,4 +1,4 @@
-"""Shared fixtures: everything needed to build a scripted device against the fake."""
+"""Shared fixtures: everything needed to build a scripted device against the mock."""
 
 from __future__ import annotations
 
@@ -7,14 +7,14 @@ from dataclasses import dataclass
 import pytest
 
 from orchestrator.config import ConnectionTarget
-from orchestrator.connection import DeviceState, FakeConnectionProvider, ScriptedBehavior
+from orchestrator.connection import DeviceState, MockConnectionProvider, ScriptedBehavior
 from orchestrator.connection.session import DeviceSession
 from orchestrator.models import IOSVersion
 
 
 @dataclass(frozen=True)
 class _Target:
-    """A minimal stand-in for ConnectionTarget — the fake never touches it."""
+    """A minimal stand-in for ConnectionTarget — the mock never touches it."""
 
     host: str = "localhost"
     port: int = 9999
@@ -33,5 +33,5 @@ def device_state() -> DeviceState:
 def make_session(
     state: DeviceState, behavior: ScriptedBehavior | None = None, target: ConnectionTarget = _Target()
 ) -> DeviceSession:
-    provider = FakeConnectionProvider(state, behavior or ScriptedBehavior())
+    provider = MockConnectionProvider(state, behavior or ScriptedBehavior())
     return DeviceSession(provider, target)

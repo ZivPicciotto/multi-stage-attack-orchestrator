@@ -1,4 +1,4 @@
-"""Phase 2: the fake device, provider, and session — the scriptable stand-in for Part 2's TCP."""
+"""Phase 2: the mock device, provider, and session — the scriptable stand-in for Part 2's TCP."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from orchestrator.connection import (
     DROP,
     ConnectionLostError,
     DeviceState,
-    FakeConnectionProvider,
+    MockConnectionProvider,
     RemoteFileError,
     ScriptedBehavior,
 )
@@ -109,16 +109,16 @@ class TestDeviceSession:
             assert r2.succeeded
 
     def test_connection_property_raises_outside_context(self, device_state):
-        provider = FakeConnectionProvider(device_state, ScriptedBehavior())
+        provider = MockConnectionProvider(device_state, ScriptedBehavior())
         session = DeviceSession(provider, target=None)
         with pytest.raises(RuntimeError):
             _ = session.connection
 
 
-class TestFakeConnectionProvider:
+class TestMockConnectionProvider:
     def test_hands_out_independent_connections_sharing_state(self, device_state):
         behavior = ScriptedBehavior()
-        provider = FakeConnectionProvider(device_state, behavior)
+        provider = MockConnectionProvider(device_state, behavior)
         c1 = provider.connect(target=None)
         c2 = provider.connect(target=None)
         assert c1 is not c2

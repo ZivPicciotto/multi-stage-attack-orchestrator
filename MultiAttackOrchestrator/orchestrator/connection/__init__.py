@@ -1,4 +1,4 @@
-"""The seam between the framework and 'the device' — a fake in Part 1, TCP in Part 2."""
+"""The seam between the framework and 'the device' — a mock in Part 1, TCP in Part 2."""
 
 from orchestrator.connection.base import (
     ConnectionLostError,
@@ -8,13 +8,13 @@ from orchestrator.connection.base import (
     ProtocolError,
     RemoteFileError,
 )
-from orchestrator.connection.fake import (
+from orchestrator.connection.mock import (
     DROP,
     DeviceState,
     InMemoryDeviceConnection,
     ScriptedBehavior,
 )
-from orchestrator.connection.provider import DeviceConnectionProvider, FakeConnectionProvider
+from orchestrator.connection.provider import DeviceConnectionProvider, MockConnectionProvider
 from orchestrator.connection.session import DeviceSession
 
 __all__ = [
@@ -29,6 +29,6 @@ __all__ = [
     "DROP",
     "InMemoryDeviceConnection",
     "DeviceConnectionProvider",
-    "FakeConnectionProvider",
+    "MockConnectionProvider",
     "DeviceSession",
 ]

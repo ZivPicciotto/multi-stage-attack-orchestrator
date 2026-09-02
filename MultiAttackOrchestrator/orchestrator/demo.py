@@ -1,4 +1,4 @@
-"""Runnable scenarios showing the whole flow move, against the in-memory fake.
+"""Runnable scenarios showing the whole flow move, against the in-memory mock.
 
 Each scenario builds its own device + scripted behavior, runs the real
 MultiAttackOrchestrator against the real attack catalog, and prints the outcome. Run with:
@@ -15,7 +15,7 @@ import logging
 
 from orchestrator.attacks.catalog import CATALOG
 from orchestrator.config import ConnectionTarget, OrchestratorConfig
-from orchestrator.connection import DROP, DeviceState, FakeConnectionProvider, ScriptedBehavior
+from orchestrator.connection import DROP, DeviceState, MockConnectionProvider, ScriptedBehavior
 from orchestrator.logging_config import configure_logging
 from orchestrator.models import ExtractionMode, ExtractionRequest, IOSVersion, StageResult
 from orchestrator.multi_attack_orchestrator import MultiAttackOrchestrator
@@ -33,7 +33,7 @@ def _banner(title: str) -> None:
 
 
 def _run(state: DeviceState, behavior: ScriptedBehavior, request: ExtractionRequest) -> None:
-    provider = FakeConnectionProvider(state, behavior)
+    provider = MockConnectionProvider(state, behavior)
     orchestrator = MultiAttackOrchestrator(provider)
     result = orchestrator.run(OrchestratorConfig(TARGET, request))
     logger.info(

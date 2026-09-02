@@ -3,9 +3,9 @@
 ## Purpose & scope
 
 Part 2 is a **C TCP server** that plays the role of "the device" for real, over a socket, so the
-Python framework built in Part 1 can talk to something other than its in-memory fake. The whole
+Python framework built in Part 1 can talk to something other than its in-memory mock. The whole
 point of Part 1's design was that everything routes through one seam — `DeviceConnection` — so
-that swapping the fake for a real transport requires **zero changes** to `MultiAttackOrchestrator`,
+that swapping the mock for a real transport requires **zero changes** to `MultiAttackOrchestrator`,
 `SingleAttackOrchestrator`, `AttackResolver`, or `DataExtractor`. Part 2 is where that promise gets
 tested. Only one new Python class (`TcpDeviceConnection`) and one new provider
 (`TcpConnectionProvider`) get added; nothing else in `orchestrator/` changes.
@@ -16,7 +16,7 @@ The simulator is **config-driven, not compiled-in**. It has no `switch` statemen
 stage IDs or file paths — it loads a scenario file at startup describing device attributes, a
 virtual filesystem, and scripted per-stage/per-path outcomes, and interprets that data generically.
 This mirrors Part 1's `DeviceState` + `ScriptedBehavior` almost exactly, on purpose: the same
-scenario shape that scripts the Python fake also scripts the C simulator, so a test author
+scenario shape that scripts the Python mock also scripts the C simulator, so a test author
 learns one mental model for both. Stage IDs and file paths are therefore pure data flowing through
 the wire protocol — never something that needs to be kept in sync in *compiled* code on either
 side.
@@ -69,10 +69,10 @@ on its next read and returns to `accept()`.
 **DROP simulation.** Per scenario config, the server can respond to a specific request by closing
 the socket **immediately, with zero bytes written** — indistinguishable from a real network
 failure. `TcpDeviceConnection` sees `recv()` return 0 (or an error) and raises
-`ConnectionLostError`, matching the fake's `DROP` sentinel exactly.
+`ConnectionLostError`, matching the mock's `DROP` sentinel exactly.
 
 **The crash design point.** A crash is delivered as a *complete, normal* `RES_CRASH` frame — the
-client still learns the reason — and *then* the server closes the socket. This mirrors the fake
+client still learns the reason — and *then* the server closes the socket. This mirrors the mock
 precisely: `run_stage()` returns a `StageResult` with `crashed=True` and a reason; only the
 *next* call on that connection fails with `ConnectionLostError`. This is what lets
 `SingleAttackOrchestrator`'s logic (phase 4, Part 1) run completely unchanged against the real
@@ -99,12 +99,12 @@ A JSON file, loaded once at simulator startup, parsed with **cJSON** (vendored �
 ```
 
 Semantics deliberately mirror Part 1's `ScriptedBehavior` and `DeviceState`:
-- An unscripted stage defaults to `ok`, repeatable — same default as the fake.
+- An unscripted stage defaults to `ok`, repeatable — same default as the mock.
 - Per-stage queues are **consumed** (advanced) across the whole process lifetime, not reset per
   connection — this is what makes "crash → reconnect → succeeds" scenarios work: the second
   connection continues the same queue where the first left off, because device state (and the
   scenario's remaining script) persists in the server process, not in any one socket.
-- `battery_drain` applies regardless of the stage's outcome (fail or crash), same as the fake.
+- `battery_drain` applies regardless of the stage's outcome (fail or crash), same as the mock.
 
 ## What state does *not* need to exist on the C side
 
@@ -180,10 +180,10 @@ Each phase is verified as it's built, same discipline as Part 1:
   print-and-inspect, given the scope.
 - **Phase D**: manual verification per handler using the phase B raw-socket harness.
 - **Phase E**: `TcpDeviceConnection` gets the *exact same* behavioral test list Part 1's
-  `test_connection.py` used against the fake (scripted retry, crash kills the connection, reconnect
+  `test_connection.py` used against the mock (scripted retry, crash kills the connection, reconnect
   revives it, battery drain, drop-on-read) — run against a real simulator subprocess instead of the
-  fake. If these pass unchanged in shape, the seam held.
-- **Phase F**: run `demo.py --tcp` and diff its narrative against the Part 1 fake-backed run — they
+  mock. If these pass unchanged in shape, the seam held.
+- **Phase F**: run `demo.py --tcp` and diff its narrative against the Part 1 mock-backed run — they
   should tell the same story per scenario, modulo timestamps.
 
 ## Notes for the README
@@ -191,5 +191,5 @@ Each phase is verified as it's built, same discipline as Part 1:
 Once Part 2 lands, the README needs: the wire protocol table above (condensed), how to build the
 simulator (`make` in `Simulator/`), how to run it (`./simulator <port> <scenario.json>`), and how
 to point the Python framework at it (`TcpConnectionProvider(ConnectionTarget(host, port))` in place
-of `FakeConnectionProvider`). This is folded into phase F rather than a standalone phase — same
+of `MockConnectionProvider`). This is folded into phase F rather than a standalone phase — same
 precedent as Part 1, which didn't carve out a dedicated "write the README" phase.

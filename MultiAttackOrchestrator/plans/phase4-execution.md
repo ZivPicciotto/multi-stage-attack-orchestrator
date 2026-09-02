@@ -91,7 +91,7 @@ channel.
 **Why context resets on restart.** A restart re-runs stage 1 on a fresh device; any tokens a prior
 attempt wrote to the context are stale, so each chain attempt gets a new `SingleAttackSharedContext`.
 
-## Tests (`test_execution.py`) — all deterministic via the scripted fake
+## Tests (`test_execution.py`) — all deterministic via the scripted mock
 
 - **Happy path:** every stage `OK` → `AttackResult.success`, `restarts_used=0`.
 - **Retry then succeed:** a non-crash stage scripted `[FAIL, OK]` with `max_retries=1` → success,

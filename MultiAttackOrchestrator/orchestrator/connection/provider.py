@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 from orchestrator.connection.base import DeviceConnection
-from orchestrator.connection.fake import DeviceState, InMemoryDeviceConnection, ScriptedBehavior
+from orchestrator.connection.mock import DeviceState, InMemoryDeviceConnection, ScriptedBehavior
 
 if TYPE_CHECKING:
     from orchestrator.config import ConnectionTarget
@@ -15,7 +15,7 @@ class DeviceConnectionProvider(Protocol):
     def connect(self, target: "ConnectionTarget") -> DeviceConnection: ...
 
 
-class FakeConnectionProvider:
+class MockConnectionProvider:
     """Hands out fresh InMemoryDeviceConnections wrapping one shared DeviceState + Behavior.
 
     Sharing state/behavior across connect() calls is what makes a reconnect resume correctly:
@@ -35,7 +35,7 @@ class FakeConnectionProvider:
         self.connect_count = 0
 
     def connect(self, target: "ConnectionTarget") -> DeviceConnection:
-        # target is unused by the fake (no real networking) — kept for interface parity with
+        # target is unused by the mock (no real networking) — kept for interface parity with
         # the Part 2 TcpConnectionProvider, which needs it to actually open a socket.
         self._state.alive = True  # a fresh connect() represents comms being (re-)established
         self.connect_count += 1
