@@ -10,7 +10,6 @@ from orchestrator.models.device import DeviceCompatibilityReqs
 from orchestrator.models.results import StageResult
 
 if TYPE_CHECKING:
-    # Imported for typing only; the concrete protocol lands in phase 2 (connection layer).
     from orchestrator.connection.base import DeviceConnection
     from orchestrator.models.context import SingleAttackSharedContext
 
@@ -18,9 +17,9 @@ if TYPE_CHECKING:
 @dataclass
 class SingleStage:
     name: str
-    stage_id: str  # command sent to the device to run this step
+    stage_id: str  # command sent to the device to run this step (simulation)
     success_probability: float  # the attacker's ESTIMATE — used only for ranking
-    max_retries: int = 0  # ADDITIONAL in-place attempts after the first, on a clean failure
+    max_retries: int = 0  # ADDITIONAL in-place attempts after the first, on a logical failure
 
     def attempt(
         self,

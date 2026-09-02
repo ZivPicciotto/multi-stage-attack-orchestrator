@@ -9,7 +9,7 @@ from orchestrator.models.extraction import ExtractionMode
 from orchestrator.models.phases import OrchestrationPhase
 
 
-class ResultType(Enum):
+class StageResultType(Enum):
     SUCCESS = "success"
     LOGIC_FAILURE = "logic_failure"
     CRASH = "crash"
@@ -23,38 +23,38 @@ class StageResult:
     stage: the same exploit can fail cleanly one attempt and panic the device the next. The
     orchestrator retries a clean failure in place but must restart the whole chain on a crash.
 
-    A single ResultType discriminant (rather than two independent booleans) makes the invalid
+    A single StageResultType discriminant (rather than two independent booleans) makes the invalid
     combination "succeeded and crashed" unrepresentable instead of just unused.
     """
 
-    result_type: ResultType
+    result_type: StageResultType
     payload: bytes | None = None  # data the device returned on success (-> shared context)
     reason: str | None = None  # human-readable explanation on failure
 
     @property
     def succeeded(self) -> bool:
-        return self.result_type is ResultType.SUCCESS
+        return self.result_type is StageResultType.SUCCESS
 
     @property
     def crashed(self) -> bool:
-        return self.result_type is ResultType.CRASH
+        return self.result_type is StageResultType.CRASH
 
     @classmethod
     def ok(cls, payload: bytes | None = None) -> StageResult:
-        return cls(ResultType.SUCCESS, payload=payload)
+        return cls(StageResultType.SUCCESS, payload=payload)
 
     @classmethod
     def fail(cls, reason: str) -> StageResult:
         """A clean logical failure — the device is intact and the stage may be retried in place."""
-        return cls(ResultType.LOGIC_FAILURE, reason=reason)
+        return cls(StageResultType.LOGIC_FAILURE, reason=reason)
 
     @classmethod
     def crash(cls, reason: str) -> StageResult:
         """A failure that also crashed the device — the chain must restart on a fresh connection."""
-        return cls(ResultType.CRASH, reason=reason)
+        return cls(StageResultType.CRASH, reason=reason)
 
 
-class AttackStatus(Enum):
+class AttackResultType(Enum):
     SUCCESS = "success"
     FAILED = "failed"
     SKIPPED = "skipped"
@@ -63,18 +63,18 @@ class AttackStatus(Enum):
 @dataclass(frozen=True)
 class AttackResult:
     attack_id: str
-    status: AttackStatus
+    status: AttackResultType
     failed_stage: str | None = None  # set on FAILED
     reason: str | None = None
     restarts_used: int = 0
 
     @property
     def succeeded(self) -> bool:
-        return self.status is AttackStatus.SUCCESS
+        return self.status is AttackResultType.SUCCESS
 
     @classmethod
     def success(cls, attack_id: str, restarts_used: int = 0) -> AttackResult:
-        return cls(attack_id, AttackStatus.SUCCESS, restarts_used=restarts_used)
+        return cls(attack_id, AttackResultType.SUCCESS, restarts_used=restarts_used)
 
     @classmethod
     def failed(
@@ -86,7 +86,7 @@ class AttackResult:
     ) -> AttackResult:
         return cls(
             attack_id,
-            AttackStatus.FAILED,
+            AttackResultType.FAILED,
             failed_stage=failed_stage,
             reason=reason,
             restarts_used=restarts_used,
@@ -94,7 +94,7 @@ class AttackResult:
 
     @classmethod
     def skipped(cls, attack_id: str, reason: str) -> AttackResult:
-        return cls(attack_id, AttackStatus.SKIPPED, reason=reason)
+        return cls(attack_id, AttackResultType.SKIPPED, reason=reason)
 
 
 @dataclass(frozen=True)

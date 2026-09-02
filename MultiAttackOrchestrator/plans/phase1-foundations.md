@@ -148,12 +148,12 @@ class StageResult:       # one stage attempt's verdict — returned by the conne
 @dataclass(frozen=True)
 class AttackResult:
     attack_id: str
-    status: AttackStatus            # SUCCESS | FAILED | SKIPPED
+    status: AttackResultType            # SUCCESS | FAILED | SKIPPED
     failed_stage: str | None = None # set on FAILED
     reason: str | None = None
     restarts_used: int = 0
     @property
-    def succeeded(self) -> bool: return self.status is AttackStatus.SUCCESS
+    def succeeded(self) -> bool: return self.status is AttackResultType.SUCCESS
 
 @dataclass(frozen=True)
 class FileResult:

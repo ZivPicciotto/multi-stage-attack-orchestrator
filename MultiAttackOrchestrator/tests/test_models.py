@@ -7,7 +7,7 @@ import pytest
 from orchestrator.models import (
     Attack,
     AttackResult,
-    AttackStatus,
+    AttackResultType,
     DeviceCompatibilityReqs,
     DeviceInfo,
     ExtractionMode,
@@ -200,7 +200,7 @@ class TestExtractionOutcome:
 class TestAttackResult:
     def test_success(self):
         r = AttackResult.success("a", restarts_used=2)
-        assert r.succeeded and r.status is AttackStatus.SUCCESS and r.restarts_used == 2
+        assert r.succeeded and r.status is AttackResultType.SUCCESS and r.restarts_used == 2
 
     def test_failed(self):
         r = AttackResult.failed("a", "stage2", "boom", restarts_used=1)
@@ -208,7 +208,7 @@ class TestAttackResult:
 
     def test_skipped(self):
         r = AttackResult.skipped("a", "unfit")
-        assert r.status is AttackStatus.SKIPPED and not r.succeeded
+        assert r.status is AttackResultType.SKIPPED and not r.succeeded
 
 
 class TestMultiAttackResult:

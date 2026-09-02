@@ -11,12 +11,12 @@ from orchestrator.models.extraction import ExtractionMode, ExtractionRequest
 from orchestrator.models.phases import OrchestrationPhase
 from orchestrator.models.results import (
     AttackResult,
-    AttackStatus,
+    AttackResultType,
     ExtractionOutcome,
     FileResult,
     MultiAttackResult,
-    ResultType,
     StageResult,
+    StageResultType,
 )
 
 __all__ = [
@@ -28,8 +28,8 @@ __all__ = [
     "ExtractionMode",
     "ExtractionRequest",
     "StageResult",
-    "ResultType",
-    "AttackStatus",
+    "StageResultType",
+    "AttackResultType",
     "AttackResult",
     "FileResult",
     "ExtractionOutcome",

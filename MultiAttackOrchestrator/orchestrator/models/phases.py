@@ -1,4 +1,4 @@
-"""The top-level orchestration phases, used for reporting how far a run progressed."""
+"""The top-level orchestration phases, used for reporting how far a multi-attack run progressed."""
 
 from enum import Enum
 
