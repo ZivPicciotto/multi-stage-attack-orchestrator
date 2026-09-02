@@ -58,6 +58,37 @@ cd Simulator && make                                     # builds the practice "
                                                             # to the real C program this time
 ```
 
+## Design patterns I leaned on
+
+A quick reference before the detailed walkthrough below, since I'll use this vocabulary without
+re-explaining it every time it comes up:
+
+- **Coordinator pattern.** I know this one from UI navigation, where it's common to keep view
+  controllers "dumb" — they know how to display themselves and report what happened, nothing more
+  — while a separate Coordinator object owns the actual flow logic (what happens next, in what
+  order). I used the same split here: a step or a method knows how to attempt itself once and
+  report a verdict, full stop. Every sequencing decision — retry, restart, which method to try
+  next, when to extract — lives in dedicated coordinator objects instead (`SingleAttackOrchestrator`
+  for one method, `MultiAttackOrchestrator` for the whole run), the same parent/child shape a top
+  coordinator driving child coordinators would have.
+- **Protocol-oriented design (ports and adapters).** `DeviceConnection` is a small protocol —
+  Python's `typing.Protocol`, structurally the same idea as a Swift `protocol` — describing exactly
+  what the decision-making code needs from "a device." The pretend in-memory device and the real
+  TCP client are both just implementations of that one protocol, swapped in without the framework,
+  or either implementation, knowing the other exists.
+- **Dependency injection.** `MultiAttackOrchestrator`'s collaborators — the connection provider, the
+  resolver, the extractor, and so on — are all passed in rather than built internally, defaulting to
+  the real implementations but swappable for tests. That's what let every test run fully
+  deterministically against the pretend device.
+- **Single source of truth (via code generation).** The wire message format both programs depend on
+  is written once, in one plain data file, and a small script generates the matching code for both
+  the Python and C sides from it. The two programs can't quietly drift out of agreement about a
+  format they both depend on, because there's only ever one place that format is actually written.
+- **Make illegal states unrepresentable.** A couple of my data types could originally represent
+  combinations that don't make sense (more on this below, under "Making impossible situations
+  actually impossible"). I changed them so those combinations can't be constructed at all, rather
+  than trusting myself to just never build one.
+
 ## Part 1 — the decision-making program
 
 ### Everything talks to "the device" through one single doorway
