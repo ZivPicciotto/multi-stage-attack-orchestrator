@@ -1,9 +1,6 @@
 # Multi-Stage Attack Orchestrator
 
-Hi — this is my submission for the Multi-Stage Attack Orchestrator take-home exercise. This
-README is written for you, the reviewer, to read first, before looking at any code. I've tried to
-explain things in plain language rather than assuming you already know how this project is put
-together.
+Hi — this is my submission for the Multi-Stage Attack Orchestrator take-home exercise.
 
 **One important note up front:** this is a made-up scenario for the purpose of the exercise. There
 is no real device anywhere in this project, and nothing here performs or describes a real security
