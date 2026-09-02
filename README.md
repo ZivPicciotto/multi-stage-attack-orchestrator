@@ -10,32 +10,6 @@ like "Task A" or "Step 2." The interesting part of this exercise isn't the made-
 how the software is put together: how it makes decisions, handles things going wrong, and talks to
 another program over a network.
 
-## What this project actually does, in plain terms
-
-Imagine a tool whose job is to unlock a device and then copy some data off it once it's unlocked.
-There are several different ways it might try to unlock the device, and not every way works on
-every device. So the tool has to:
-
-1. Figure out which methods could even work on this particular device.
-2. Pick the one it thinks is most promising and try it.
-3. Handle it if that attempt goes wrong — sometimes that means "try that same step again,"
-   sometimes it means "start completely over," and sometimes it means "give up on this method and
-   try a different one."
-4. Once something works, copy the requested data off the device.
-
-That's the whole job. The exercise asked for this to be built in three parts:
-
-- **Part 1** — the actual decision-making program, written in Python. It is not allowed to talk to
-  a real device — instead it talks to a pretend, in-memory stand-in device that I built for testing.
-- **Part 2** — a second, separate program, written in C, that behaves like a real device would: it
-  runs on its own and the Python program talks to it over the network (the same way it would talk
-  to an actual device), including things going wrong along the way — a step failing, or the
-  connection dropping partway through.
-- **Part 3** — tests that check Part 1 actually works correctly against the real Part 2 program,
-  not just against the pretend stand-in.
-
-All three parts are done. Details below.
-
 ## Where everything is
 
 ```
