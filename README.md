@@ -103,6 +103,14 @@ Cheaper, safer methods are allowed to restart several times; a method where a fa
 more costly is set to not restart at all. It's a partial answer to a bigger question, and I'd rather
 say that plainly than pretend the simple scoring covers everything.
 
+**One thing I want to flag directly:** the brief describes deciding on one method, running it, and
+extracting once it succeeds — it doesn't explicitly say what should happen if that one method fails
+outright. Automatically falling through and trying the next-ranked method is something I chose to
+add, not something the brief asked for in so many words. I think it's a reasonable extension of
+"several may be valid for the same device — how do you pick?" rather than unnecessary complexity,
+since a real tool would obviously want to try something else rather than just give up. But I'd
+rather say plainly that this is my own addition than have it look like I assumed it was required.
+
 ### Three different ways a step can go wrong, handled three different ways
 
 | What happened | What the program does about it |
@@ -223,6 +231,11 @@ The exercise notes that I should call out places where I saw more than one reaso
 explain what I chose and why. Here's a summary of the main ones, most of which are also explained
 in more depth above:
 
+- **Falling through to the next-ranked method on failure, which the brief doesn't explicitly ask
+  for.** The brief describes deciding on one method and running it; it's silent on what happens if
+  that one fails outright. I chose to keep trying lower-ranked methods rather than stop at the
+  first failure, since that's what a real tool would do — but I want to be upfront that this is an
+  addition on my part, not a literal requirement I was following.
 - **A simple scoring system for ranking methods, instead of a more complete one.** I explained the
   reasoning above — I didn't think a fully realistic multi-factor scoring system was the point of
   this exercise, so I built the simpler version and was explicit about what it leaves out, rather
