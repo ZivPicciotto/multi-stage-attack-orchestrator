@@ -1,0 +1,11 @@
+{
+  "device": { "model": "iPhone11,8", "ios_version": "14.2.0", "battery": 90 },
+  "filesystem": {
+    "/private/var/mobile/Library/SMS/sms.db": "<sms data>",
+    "/private/var/mobile/Library/Keychain/keychain.plist": "<keychain data>",
+    "/private/var/mobile/Media/DCIM/IMG_0001.jpg": "<photo bytes>"
+  },
+  "stages": {},
+  "battery_drain": {},
+  "drop_on_read": ["/private/var/mobile/Media/DCIM/IMG_0001.jpg"]
+}

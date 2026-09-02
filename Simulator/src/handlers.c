@@ -48,7 +48,9 @@ static int handle_run_stage(int fd, Scenario *scenario, const Frame *req) {
 
     switch (event.outcome) {
         case OUTCOME_OK:
-            frame_write(fd, RES_OK, NULL, 0);
+            frame_write(fd, RES_OK,
+                        event.payload_len ? (const uint8_t *)event.payload : NULL,
+                        (uint32_t)event.payload_len);
             return 0;
         case OUTCOME_FAIL:
             frame_write(fd, RES_FAIL, (const uint8_t *)event.reason, (uint32_t)strlen(event.reason));
@@ -108,8 +110,9 @@ static int handle_read_file(int fd, Scenario *scenario, const Frame *req) {
     size_t len;
     const char *content = device_state_read_file(&scenario->device, path, &len);
     if (content == NULL) {
-        const char *reason = "no such file";
-        frame_write(fd, RES_FILE_ERROR, (const uint8_t *)reason, (uint32_t)strlen(reason));
+        char reason[300];
+        int n = snprintf(reason, sizeof reason, "no such file: '%s'", path);
+        frame_write(fd, RES_FILE_ERROR, (const uint8_t *)reason, (uint32_t)n);
         return 0; /* one missing file doesn't end the session */
     }
     frame_write(fd, RES_OK, (const uint8_t *)content, (uint32_t)len);

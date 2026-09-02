@@ -66,7 +66,12 @@ class TcpDeviceConnection:
 
     def read_file(self, path: str) -> bytes:
         self._send(RequestType.READ_FILE, path.encode("utf-8"))
-        rtype, payload = self._recv()
+        try:
+            rtype, payload = self._recv()
+        except ConnectionLostError as e:
+            # _recv doesn't know which request it was answering; add that context here, at the
+            # one call site that does — matching the mock's read_file message exactly.
+            raise ConnectionLostError(f"connection dropped while reading {path!r}") from e
         if rtype is ResponseType.FILE_ERROR:
             raise RemoteFileError(payload.decode("utf-8"))
         self._expect(rtype, ResponseType.OK)

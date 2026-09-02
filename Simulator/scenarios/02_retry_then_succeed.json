@@ -1,0 +1,12 @@
+{
+  "device": { "model": "iPhone11,8", "ios_version": "14.2.0", "battery": 90 },
+  "filesystem": {},
+  "stages": {
+    "bootrom": [
+      { "outcome": "fail", "reason": "timing window missed" },
+      { "outcome": "ok" }
+    ]
+  },
+  "battery_drain": {},
+  "drop_on_read": []
+}

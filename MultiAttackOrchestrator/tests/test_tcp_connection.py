@@ -127,9 +127,20 @@ class TestTcpDeviceConnection:
             assert not r1.succeeded and not r1.crashed
             r2 = session.connection.run_stage("bootrom")
             assert r2.succeeded
-            # Unlike the mock's StageResult.ok(b"leak"), RUN_STAGE's RES_OK carries no payload
-            # in wire protocol v1 (see Simulator/plans/overview.md) — nothing in Part 1's demo
-            # catalog needs a stage payload, so this was left out of v1 scope on purpose.
+            # No "payload" was scripted for this OK event, so it carries none -- see
+            # test_run_stage_ok_carries_a_scripted_payload below for the case that does.
+            assert r2.payload is None
+
+    def test_run_stage_ok_carries_a_scripted_payload(self, tmp_path):
+        # KEYBAG_CHAIN's "Keybag unwrap" stage needs the payload an earlier stage stashed into
+        # SingleAttackSharedContext -- this is what makes that possible over a real transport.
+        scenario = _scenario(
+            stages={"class_key_leak": [{"outcome": "ok", "payload": "leaked-class-keys"}]}
+        )
+        with make_tcp_session(scenario, tmp_path) as session:
+            r = session.connection.run_stage("class_key_leak")
+            assert r.succeeded
+            assert r.payload == b"leaked-class-keys"
 
     def test_crash_kills_the_connection(self, tmp_path):
         scenario = _scenario(stages={"kernel_rw": [{"outcome": "crash", "reason": "panic"}]})

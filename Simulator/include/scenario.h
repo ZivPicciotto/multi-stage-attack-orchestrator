@@ -7,12 +7,15 @@
 
 #define STAGE_ID_MAX 64
 #define REASON_MAX 128
+#define STAGE_PAYLOAD_MAX 128
 
 typedef enum { OUTCOME_OK, OUTCOME_FAIL, OUTCOME_CRASH, OUTCOME_DROP } StageOutcome;
 
 typedef struct {
     StageOutcome outcome;
     char reason[REASON_MAX]; /* used for FAIL/CRASH; empty otherwise */
+    char payload[STAGE_PAYLOAD_MAX]; /* optional, OK only; -> SingleAttackSharedContext */
+    size_t payload_len;              /* 0 means "no payload scripted", not "empty string" */
 } StageEvent;
 
 typedef struct {

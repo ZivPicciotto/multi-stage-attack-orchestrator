@@ -1,0 +1,17 @@
+{
+  "device": { "model": "iPhone11,8", "ios_version": "14.2.0", "battery": 90 },
+  "filesystem": {},
+  "stages": {
+    "payload": [
+      { "outcome": "fail", "reason": "payload rejected" }
+    ],
+    "kernel_rw": [
+      { "outcome": "fail", "reason": "info leak stale" }
+    ],
+    "bruteforce": [
+      { "outcome": "fail", "reason": "passcode attempt limit" }
+    ]
+  },
+  "battery_drain": {},
+  "drop_on_read": []
+}

@@ -163,11 +163,15 @@ MultiAttackOrchestrator/orchestrator/
 | Phase | Doc | Deliverable | Depends on |
 |---|---|---|---|
 | A | `phaseA-shared-protocol.md` | `SharedProtocol/spec.json` + codegen, generated Python module + C header, drift-guard test — **done** | Part 1 (done) |
-| B | `phaseB-server-skeleton.md` | TCP accept loop + frame encode/decode, no domain logic yet | A |
-| C | `phaseC-scenario-state.md` | `device_state.c`, `scenario.c` (cJSON-backed), mirrors `DeviceState`/`ScriptedBehavior` | A, B |
-| D | `phaseD-handlers.md` | The 4 request handlers; crash-then-close and drop-with-no-response | B, C |
-| E | `phaseE-python-tcp-client.md` | `TcpDeviceConnection` + `TcpConnectionProvider`, satisfying `DeviceConnection` exactly | A, D |
-| F | `phaseF-scenarios-demo.md` | Scenario JSON files mirroring the 8 Part 1 demo scenarios + a `--tcp` demo mode proving identical narrative against the real simulator | D, E |
+| B | `phaseB-server-skeleton.md` | TCP accept loop + frame encode/decode — **done** | A |
+| C | `phaseC-scenario-state.md` | `device_state.c`, `scenario.c` (cJSON-backed), mirrors `DeviceState`/`ScriptedBehavior` — **done** | A, B |
+| D | `phaseD-handlers.md` | The 4 request handlers; crash-then-close and drop-with-no-response — **done** | B, C |
+| E | `phaseE-python-tcp-client.md` | `TcpDeviceConnection` + `TcpConnectionProvider`, satisfying `DeviceConnection` exactly — **done**, 13/13 tests passing against the real simulator | A, D |
+| F | `phaseF-scenarios-demo.md` | Scenario JSON files mirroring the Part 1 demo scenarios + a `--tcp` demo mode — **done**, 67/67 comparable log lines identical across both transports | D, E |
+
+**Part 2 is complete.** Every phase above is implemented and verified; see each phase doc for what
+was actually built (some details — the wire-protocol payload support in particular — were extended
+beyond what was originally sketched, once a real scenario needed them).
 
 Part 3 (formal integration tests running against the real simulator) builds directly on phase F's
 scenario files and `TcpConnectionProvider` — but is out of scope for this plan.
@@ -189,10 +193,10 @@ Each phase is verified as it's built, same discipline as Part 1:
 - **Phase F**: run `demo.py --tcp` and diff its narrative against the Part 1 mock-backed run — they
   should tell the same story per scenario, modulo timestamps.
 
-## Notes for the README
+## Notes for the README — done
 
-Once Part 2 lands, the README needs: the wire protocol table above (condensed), how to build the
-simulator (`make` in `Simulator/`), how to run it (`./simulator <port> <scenario.json>`), and how
-to point the Python framework at it (`TcpConnectionProvider(ConnectionTarget(host, port))` in place
-of `MockConnectionProvider`). This is folded into phase F rather than a standalone phase — same
-precedent as Part 1, which didn't carve out a dedicated "write the README" phase.
+The root README now covers all of this: the wire protocol table (condensed), how to build the
+simulator (`make` in `Simulator/`), how to run it standalone, how to point the Python framework at
+it (`TcpConnectionProvider()` in place of `MockConnectionProvider`), and the "seam held" proof
+(67/67 identical comparable lines across both transports). Folded into phase F rather than a
+standalone phase, same precedent as Part 1.

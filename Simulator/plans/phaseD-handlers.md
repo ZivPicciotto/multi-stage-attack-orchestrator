@@ -76,7 +76,11 @@ static int handle_run_stage(int fd, Scenario *scenario, const Frame *req) {
 
     switch (event.outcome) {
         case OUTCOME_OK:
-            frame_write(fd, RES_OK, NULL, 0);   // payload support can be added later if a scenario needs it
+            // Done: a scenario CAN script a per-stage OK payload ("payload": "..." on the event) --
+            // added in phase F for KEYBAG_CHAIN, whose second stage genuinely needs one.
+            frame_write(fd, RES_OK,
+                        event.payload_len ? (const uint8_t*)event.payload : NULL,
+                        (uint32_t)event.payload_len);
             return 0;
         case OUTCOME_FAIL:
             frame_write(fd, RES_FAIL, (const uint8_t*)event.reason, strlen(event.reason));

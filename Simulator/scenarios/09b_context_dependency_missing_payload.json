@@ -1,0 +1,7 @@
+{
+  "device": { "model": "iPhone15,2", "ios_version": "17.0.0", "battery": 80 },
+  "filesystem": {},
+  "stages": {},
+  "battery_drain": {},
+  "drop_on_read": []
+}

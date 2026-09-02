@@ -1,0 +1,11 @@
+{
+  "device": { "model": "iPhone11,8", "ios_version": "14.2.0", "battery": 90 },
+  "filesystem": {},
+  "stages": {
+    "payload": [
+      { "outcome": "fail", "reason": "payload rejected" }
+    ]
+  },
+  "battery_drain": { "dfu": 25, "bootrom": 25, "payload": 15 },
+  "drop_on_read": []
+}

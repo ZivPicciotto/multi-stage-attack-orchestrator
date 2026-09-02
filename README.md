@@ -11,25 +11,29 @@ exploit. "Attacks," "stages," and "crashes" are simulation vocabulary.
 
 | Part | What | Status |
 |---|---|---|
-| **1 — Attack framework** | Python: model attacks, pick one, run it, extract data | **Done.** 89 tests passing, mypy clean. |
-| **2 — Device simulator** | C TCP server standing in for a real device | **In progress.** Shared wire-protocol codegen (phase A) is done; the server itself (phases B–F) is planned, no C code yet. |
-| **3 — Tests against the simulator** | Integration tests that exercise Part 1 over a real socket, not just the in-memory mock | Not started — depends on Part 2. |
+| **1 — Attack framework** | Python: model attacks, pick one, run it, extract data | **Done.** 102 tests passing, mypy clean. |
+| **2 — Device simulator** | C TCP server standing in for a real device | **Done.** Builds clean (`-Wall -Wextra`, zero warnings), 0 leaks under `leaks`. `demo.py` and `demo.py --tcp` produce byte-identical results across all 9 scenarios — the seam held. |
+| **3 — Tests against the simulator** | Integration tests that exercise Part 1 over a real socket, not just the in-memory mock | `tests/test_tcp_connection.py` mirrors `test_connection.py` against the real simulator (13/13 passing) — this is most of Part 3 already; a dedicated pass to broaden coverage is the one remaining item. |
 
 ## Repo layout
 
 ```
 Attack_Orchestrator_Exercise.docx   # the original brief
-SharedProtocol/                     # wire-protocol source of truth + codegen (done)
+SharedProtocol/                     # wire-protocol source of truth + codegen
 ├── spec.json
 └── generate.py
-MultiAttackOrchestrator/            # Part 1 — Python framework (done)
+MultiAttackOrchestrator/            # Part 1 — Python framework
 ├── plans/                          # design docs, written before the code, phase by phase
 ├── orchestrator/
-│   └── shared_protocol/            # GENERATED from SharedProtocol/spec.json
-└── tests/                          # pytest suite
-Simulator/                          # Part 2 — C TCP simulator (in progress)
+│   ├── shared_protocol/            # GENERATED from SharedProtocol/spec.json
+│   └── connection/tcp.py           # the real transport: TcpDeviceConnection/TcpConnectionProvider
+└── tests/                          # pytest suite, including test_tcp_connection.py
+Simulator/                          # Part 2 — C TCP simulator
 ├── plans/                          # wire protocol + phase-by-phase plan
-└── shared_protocol/                # GENERATED from SharedProtocol/spec.json
+├── shared_protocol/                # GENERATED from SharedProtocol/spec.json
+├── third_party/                    # vendored cJSON (MIT)
+├── include/, src/                  # frame codec, accept loop, device/scenario state, handlers
+└── scenarios/                      # one JSON file per demo.py scenario
 ```
 
 Each part's `plans/` folder holds the reasoning this README only summarizes — start with
@@ -139,19 +143,22 @@ mid-run skip, total failure, all four extraction modes, and the context-dependen
 above — with full INFO-level logging so the narrative (stage attempts, retries, restarts, skips) is
 visible, not just the final result.
 
-## Part 2 — the device simulator (in progress)
-
-The C server itself isn't built yet — this section describes the design in `Simulator/plans/`, so
-the intent is on record even where the code doesn't exist yet. The shared wire-protocol codegen
-(phase A) **is** built; it's described in full below since both sides already depend on it.
-
-### Design goal
+## Part 2 — the device simulator
 
 A single-threaded C TCP server that plays the device's role for real, well enough that
 `TcpDeviceConnection` satisfies `DeviceConnection` exactly like the mock does — meaning zero changes
 to anything above the seam (`MultiAttackOrchestrator`, `SingleAttackOrchestrator`, `AttackResolver`,
-`DataExtractor`). Only two new Python files get added: `connection/tcp.py`
-(`TcpDeviceConnection` + `TcpConnectionProvider`) and the already-generated `shared_protocol/`.
+`DataExtractor`). Only two new Python files were added: `connection/tcp.py`
+(`TcpDeviceConnection` + `TcpConnectionProvider`) and the generated `shared_protocol/`.
+
+**Proof the promise held:** `demo.py` and `demo.py --tcp` run the same 9 scenarios against the mock
+and the real simulator respectively, and their `RESULT:`/`attempt:`/extraction-summary log lines
+are **byte-identical** across all of them (67/67 comparable lines, diffed with timestamps and
+connection ports stripped). Building this surfaced one real gap along the way: `RUN_STAGE`'s
+`RES_OK` originally never carried a payload (a v1 stub, flagged in the phase D plan as "can be
+added later if a scenario needs it") — `KEYBAG_CHAIN`'s second stage genuinely needs one, so
+scenario JSON files can now script `"payload": "..."` on an `ok` event and the C handler sends it
+for real.
 
 ### Config-driven, not compiled-in
 
@@ -184,7 +191,7 @@ Frame, both directions: `[1 byte type][4 bytes length, big-endian][length bytes 
 
 | Byte | Response | Meaning | After sending |
 |---|---|---|---|
-| `0x81` | `RES_OK` | success (payload varies per request) | connection stays open |
+| `0x81` | `RES_OK` | success — `GET_INFO`: `"<model>\|<ios>\|<battery>"`; `RUN_STAGE`: an optional scripted payload (→ `SingleAttackSharedContext`, empty by default); `LIST_FILES`: newline-joined sorted paths; `READ_FILE`: raw file bytes | connection stays open |
 | `0x82` | `RES_FAIL` | clean logical failure (`RUN_STAGE` only) | connection stays open |
 | `0x83` | `RES_CRASH` | failure that also crashed the device (`RUN_STAGE` only) | **server closes the socket** |
 | `0x84` | `RES_FILE_ERROR` | file missing/inaccessible (`READ_FILE` only) | connection stays open |
@@ -201,32 +208,48 @@ to (see above), so `SingleAttackOrchestrator`'s logic runs unchanged against a r
 Timeouts are purely client-side (`socket.settimeout()` → `ConnectionTimeout`); no server support
 needed for v1.
 
-### Planned build/run (once implemented)
+### Build and run
 
 ```bash
-cd Simulator && make
-./simulator <port> scenarios/03_crash_then_restart.json
+cd Simulator && make                                    # -Wall -Wextra -std=c11, zero warnings
+./simulator 9500 scenarios/03_crash_then_restart.json    # standalone, talk to it with any client
+```
+
+```bash
+cd MultiAttackOrchestrator
+.venv/bin/python -m orchestrator.demo             # in-memory mock
+.venv/bin/python -m orchestrator.demo --tcp        # real simulator: one subprocess per scenario,
+                                                    # built from Simulator/scenarios/*.json
 ```
 
 ```python
-from orchestrator.connection.tcp import TcpConnectionProvider
-provider = TcpConnectionProvider()   # drop-in for MockConnectionProvider
+from orchestrator.connection import TcpConnectionProvider
+provider = TcpConnectionProvider()   # drop-in for MockConnectionProvider — the entire swap
 ```
 
 ### Why cJSON, vendored
 
 The scenario format needed real JSON parsing, and hand-rolling one for a take-home exercise felt
-like effort spent on the wrong thing. cJSON (MIT-licensed, single C file) is vendored directly into
-`Simulator/third_party/` rather than pulled as a system dependency, so `make` has no external
-requirements beyond a C compiler.
+like effort spent on the wrong thing. cJSON v1.7.19 (MIT-licensed, single C file, pinned to the
+upstream release tag) is vendored directly into `Simulator/third_party/` rather than pulled as a
+system dependency, so `make` has no external requirements beyond a C compiler.
 
 ## Part 3 — tests against the simulator
 
-Not started; depends on Part 2 existing. The plan (`Simulator/plans/overview.md`, phase F) is to
-reuse the exact scenario JSON files and `TcpConnectionProvider` from Part 2, and run the *same*
-behavioral test list Part 1's `test_connection.py` already runs against the mock (scripted retry,
-crash kills the connection, reconnect revives it, battery drain, drop-on-read) against a real
-simulator subprocess instead. If those pass unchanged in shape, the seam held end to end.
+`tests/test_tcp_connection.py` reuses the exact scenario shape and `TcpConnectionProvider` from
+Part 2, and deliberately mirrors `test_connection.py` test-for-test (fixture launches the real
+simulator binary as a subprocess per test, against a temp scenario file): scripted retry, crash
+kills the connection, reconnect revives it and continues the same scripted queue, battery drain, a
+missing file, drop-on-read. 13/13 passing on the first real run, over a real socket instead of the
+mock — the actual proof the seam held, not just an assertion that it should. The two places the
+mock's assertions couldn't carry over unchanged are called out inline in the test file: the C side
+has no `DeviceState.alive` equivalent (a real socket's liveness *is* the connection's liveness), and
+`RUN_STAGE`'s payload is opt-in per scenario rather than always present.
+
+Broader coverage (property-based fuzzing of the frame codec, deliberately malformed/oversized
+payloads beyond the two exercise here, concurrent-client stress since the server is single-threaded
+by design) is the one item left unstarted — a reasonable next slice, not required to call the seam
+proven.
 
 ## Notable design tradeoffs (more than one reasonable option existed)
 
@@ -246,3 +269,12 @@ simulator subprocess instead. If those pass unchanged in shape, the seam held en
   format is the one place Python and C genuinely must agree bit-for-bit, so it's generated from a
   single `SharedProtocol/spec.json` with a drift-detecting test, rather than trusted to stay in
   sync by hand.
+- **Single-threaded, one-connection-at-a-time server, no `select()`/threads** — a deterministic
+  test double never needs concurrent clients, and the complexity that buys (locking shared
+  scenario/device state across threads) has no payoff here. The tradeoff bites only if something
+  ever needs two simultaneous sessions against one simulator, which nothing in this exercise does.
+- **Fixed-size buffers everywhere in the C server (`stage_id[64]`, `path[256]`, …), length-checked
+  against the wire before every copy** — the realistic way this server crashes for real isn't a
+  scripted scenario, it's an oversized or adversarial length field; Python never had to think about
+  this class of bug at all, which is exactly the "think across a language boundary" the exercise
+  asks for.

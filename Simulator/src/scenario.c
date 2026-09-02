@@ -125,6 +125,14 @@ static void load_stages(const cJSON *root, Scenario *out) {
             } else {
                 ev->reason[0] = '\0';
             }
+            const cJSON *payload = cJSON_GetObjectItemCaseSensitive(item, "payload");
+            if (cJSON_IsString(payload)) {
+                strncpy(ev->payload, payload->valuestring, STAGE_PAYLOAD_MAX - 1);
+                ev->payload_len = strlen(ev->payload);
+            } else {
+                ev->payload[0] = '\0';
+                ev->payload_len = 0;
+            }
         }
     }
 }
@@ -208,7 +216,9 @@ StageEvent scenario_next_stage_event(Scenario *scenario, const char *stage_id) {
         }
         break;
     }
-    StageEvent ok = {OUTCOME_OK, ""};
+    StageEvent ok;
+    memset(&ok, 0, sizeof ok);
+    ok.outcome = OUTCOME_OK;
     return ok;
 }
 

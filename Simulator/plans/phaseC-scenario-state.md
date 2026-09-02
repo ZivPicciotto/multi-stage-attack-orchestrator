@@ -53,7 +53,9 @@ typedef enum { OUTCOME_OK, OUTCOME_FAIL, OUTCOME_CRASH, OUTCOME_DROP } StageOutc
 
 typedef struct {
     StageOutcome outcome;
-    char reason[128];     // used for FAIL/CRASH
+    char reason[128];       // used for FAIL/CRASH
+    char payload[128];      // optional, OK only -> SingleAttackSharedContext (added phase F)
+    size_t payload_len;     // 0 means "no payload scripted", not "empty string"
 } StageEvent;
 
 typedef struct {
