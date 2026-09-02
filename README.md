@@ -50,6 +50,15 @@ any code for a given piece, I wrote a short document explaining what I was about
 those documents go into more depth than this README does, if you want to see the reasoning behind a
 specific piece.
 
+One honest caveat about those documents: I wrote each one *before* writing the code it describes,
+and the code sometimes changed afterward — a rename, a bug caught during implementation, a detail
+that turned out differently once it was actually built. I didn't go back and keep every one of
+those documents word-for-word in sync with every later change, so a few of them describe an earlier
+version of a design rather than the exact final code. The reasoning in them is still accurate; a
+specific detail here or there (a file name, a function signature) occasionally isn't. If something
+in a planning document looks inconsistent with the actual code, trust the code — that's the same
+default I'd want a reader to apply to anyone's design docs.
+
 ## How to actually run it
 
 If you want to see it working rather than just reading about it:

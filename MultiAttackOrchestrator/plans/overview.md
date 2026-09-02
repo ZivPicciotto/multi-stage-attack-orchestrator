@@ -1,5 +1,9 @@
 # Part 1 — Multi-Stage Attack Orchestrator: Overview
 
+*Written before the code it describes. Some details below (a file name, a function signature) may
+have moved on since — see the root `README.md`'s caveat on this. The reasoning holds; trust the
+actual code over this doc for exact specifics.*
+
 ## Purpose & scope
 
 Part 1 is the **Python framework**. It models attacks made of multiple stages, decides which

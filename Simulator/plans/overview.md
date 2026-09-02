@@ -1,5 +1,9 @@
 # Part 2 — Device Simulator: Overview
 
+*Written before the code it describes. Some details below (a file name, a function signature) may
+have moved on since — see the root `README.md`'s caveat on this. The reasoning holds; trust the
+actual code over this doc for exact specifics.*
+
 ## Purpose & scope
 
 Part 2 is a **C TCP server** that plays the role of "the device" for real, over a socket, so the
