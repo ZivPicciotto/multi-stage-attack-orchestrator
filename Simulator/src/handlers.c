@@ -13,6 +13,7 @@
 #include "protocol_ids.h"
 
 static int write_protocol_error(int fd, const char *msg) {
+    fprintf(stderr, "handlers: protocol error: %s -- closing connection\n", msg);
     frame_write(fd, RES_PROTOCOL_ERROR, (const uint8_t *)msg, (uint32_t)strlen(msg));
     return 1; /* close */
 }
@@ -32,6 +33,7 @@ static int handle_get_info(int fd, const Scenario *scenario) {
     int n = snprintf(buf, sizeof buf, "%s|%d.%d.%d|%d", scenario->device.model,
                       scenario->device.ios_major, scenario->device.ios_minor,
                       scenario->device.ios_patch, scenario->device.battery);
+    fprintf(stderr, "handlers: GET_INFO -> OK %s\n", buf);
     frame_write(fd, RES_OK, (const uint8_t *)buf, (uint32_t)n);
     return 0; /* stay open */
 }
@@ -44,21 +46,32 @@ static int handle_run_stage(int fd, Scenario *scenario, const Frame *req) {
 
     StageEvent event = scenario_next_stage_event(scenario, stage_id);
     int drain = scenario_battery_drain_for(scenario, stage_id);
-    if (drain > 0) device_state_drain_battery(&scenario->device, drain);
+    if (drain > 0) {
+        device_state_drain_battery(&scenario->device, drain);
+        fprintf(stderr, "handlers: RUN_STAGE %s drained battery by %d (now %d%%)\n", stage_id,
+                drain, scenario->device.battery);
+    }
 
     switch (event.outcome) {
         case OUTCOME_OK:
+            fprintf(stderr, "handlers: RUN_STAGE %s -> OK%s\n", stage_id,
+                    event.payload_len ? " (with payload)" : "");
             frame_write(fd, RES_OK,
                         event.payload_len ? (const uint8_t *)event.payload : NULL,
                         (uint32_t)event.payload_len);
             return 0;
         case OUTCOME_FAIL:
+            fprintf(stderr, "handlers: RUN_STAGE %s -> FAIL (%s)\n", stage_id, event.reason);
             frame_write(fd, RES_FAIL, (const uint8_t *)event.reason, (uint32_t)strlen(event.reason));
             return 0; /* clean failure — connection stays open, client may retry */
         case OUTCOME_CRASH:
+            fprintf(stderr, "handlers: RUN_STAGE %s -> CRASH (%s) -- closing connection\n",
+                    stage_id, event.reason);
             frame_write(fd, RES_CRASH, (const uint8_t *)event.reason, (uint32_t)strlen(event.reason));
             return 1; /* close — the defining crash-then-close behavior */
         case OUTCOME_DROP:
+            fprintf(stderr, "handlers: RUN_STAGE %s -> DROP -- closing with nothing written\n",
+                    stage_id);
             return 1; /* close with NOTHING written — indistinguishable from a real network drop */
     }
     return 1;
@@ -92,6 +105,7 @@ static int handle_list_files(int fd, const Scenario *scenario) {
     }
     free(paths);
 
+    fprintf(stderr, "handlers: LIST_FILES -> OK (%zu files)\n", n);
     frame_write(fd, RES_OK, (const uint8_t *)buf, (uint32_t)pos); /* empty payload = no files */
     free(buf);
     return 0;
@@ -104,6 +118,7 @@ static int handle_read_file(int fd, Scenario *scenario, const Frame *req) {
     }
 
     if (scenario_should_drop_on_read(scenario, path)) {
+        fprintf(stderr, "handlers: READ_FILE %s -> DROP -- closing with nothing written\n", path);
         return 1; /* close with nothing written — same DROP treatment as a stage */
     }
 
@@ -112,9 +127,11 @@ static int handle_read_file(int fd, Scenario *scenario, const Frame *req) {
     if (content == NULL) {
         char reason[300];
         int n = snprintf(reason, sizeof reason, "no such file: '%s'", path);
+        fprintf(stderr, "handlers: READ_FILE %s -> FILE_ERROR\n", path);
         frame_write(fd, RES_FILE_ERROR, (const uint8_t *)reason, (uint32_t)n);
         return 0; /* one missing file doesn't end the session */
     }
+    fprintf(stderr, "handlers: READ_FILE %s -> OK (%zu bytes)\n", path, len);
     frame_write(fd, RES_OK, (const uint8_t *)content, (uint32_t)len);
     return 0;
 }
@@ -129,8 +146,11 @@ static int dispatch(int fd, const Frame *req, Scenario *scenario) {
             return handle_list_files(fd, scenario);
         case REQ_READ_FILE:
             return handle_read_file(fd, scenario, req);
-        default:
-            return write_protocol_error(fd, "unknown request type");
+        default: {
+            char msg[64];
+            snprintf(msg, sizeof msg, "unknown request type 0x%02x", req->type);
+            return write_protocol_error(fd, msg);
+        }
     }
 }
 

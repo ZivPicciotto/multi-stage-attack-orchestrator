@@ -49,7 +49,9 @@ int server_run(uint16_t port, Scenario *scenario) {
             perror("accept");
             break;
         }
+        fprintf(stderr, "server: connection accepted (fd=%d)\n", client_fd);
         handle_connection(client_fd, scenario);
+        fprintf(stderr, "server: connection closed (fd=%d)\n", client_fd);
         close(client_fd);
     }
 
