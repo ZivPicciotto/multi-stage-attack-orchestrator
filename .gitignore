@@ -9,6 +9,11 @@ venv/
 build/
 dist/
 
+### C / Simulator
+Simulator/simulator
+Simulator/*.o
+Simulator/*.dSYM/
+
 ### macOS
 # Finder metadata
 .DS_Store
