@@ -1,280 +1,267 @@
 # Multi-Stage Attack Orchestrator
 
-A framework that models multi-stage mobile-device unlocking attacks, decides which attack to run
-against a given device, runs it, and extracts data once it succeeds. Built for a take-home
-exercise; see `Attack_Orchestrator_Exercise.docx` for the original brief.
+Hi — this is my submission for the Multi-Stage Attack Orchestrator take-home exercise. This
+README is written for you, the reviewer, to read first, before looking at any code. I've tried to
+explain things in plain language rather than assuming you already know how this project is put
+together.
 
-This is a **software design exercise**: nothing here talks to a real device or performs a real
-exploit. "Attacks," "stages," and "crashes" are simulation vocabulary.
+**One important note up front:** this is a made-up scenario for the purpose of the exercise. There
+is no real device anywhere in this project, and nothing here performs or describes a real security
+exploit. Every "attack" and "stage" name you'll see is just a made-up label I used to give the
+simulation something concrete to work with — think of it the same way you'd think of a placeholder
+like "Task A" or "Step 2." The interesting part of this exercise isn't the made-up attacks — it's
+how the software is put together: how it makes decisions, handles things going wrong, and talks to
+another program over a network.
 
-## Status
+## What this project actually does, in plain terms
 
-| Part | What | Status |
-|---|---|---|
-| **1 — Attack framework** | Python: model attacks, pick one, run it, extract data | **Done.** 102 tests passing, mypy clean. |
-| **2 — Device simulator** | C TCP server standing in for a real device | **Done.** Builds clean (`-Wall -Wextra`, zero warnings), 0 leaks under `leaks`. `demo.py` and `demo.py --tcp` produce byte-identical results across all 9 scenarios — the seam held. |
-| **3 — Tests against the simulator** | Integration tests that exercise Part 1 over a real socket, not just the in-memory mock | `tests/test_tcp_connection.py` mirrors `test_connection.py` against the real simulator (13/13 passing) — this is most of Part 3 already; a dedicated pass to broaden coverage is the one remaining item. |
+Imagine a tool whose job is to unlock a device and then copy some data off it once it's unlocked.
+There are several different ways it might try to unlock the device, and not every way works on
+every device. So the tool has to:
 
-## Repo layout
+1. Figure out which methods could even work on this particular device.
+2. Pick the one it thinks is most promising and try it.
+3. Handle it if that attempt goes wrong — sometimes that means "try that same step again,"
+   sometimes it means "start completely over," and sometimes it means "give up on this method and
+   try a different one."
+4. Once something works, copy the requested data off the device.
+
+That's the whole job. The exercise asked for this to be built in three parts:
+
+- **Part 1** — the actual decision-making program, written in Python. It is not allowed to talk to
+  a real device — instead it talks to a pretend, in-memory stand-in device that I built for testing.
+- **Part 2** — a second, separate program, written in C, that behaves like a real device would: it
+  runs on its own and the Python program talks to it over the network (the same way it would talk
+  to an actual device), including things going wrong along the way — a step failing, or the
+  connection dropping partway through.
+- **Part 3** — tests that check Part 1 actually works correctly against the real Part 2 program,
+  not just against the pretend stand-in.
+
+All three parts are done. Details below.
+
+## Where everything is
 
 ```
-Attack_Orchestrator_Exercise.docx   # the original brief
-SharedProtocol/                     # wire-protocol source of truth + codegen
-├── spec.json
-└── generate.py
-MultiAttackOrchestrator/            # Part 1 — Python framework
-├── plans/                          # design docs, written before the code, phase by phase
-├── orchestrator/
-│   ├── shared_protocol/            # GENERATED from SharedProtocol/spec.json
-│   └── connection/tcp.py           # the real transport: TcpDeviceConnection/TcpConnectionProvider
-└── tests/                          # pytest suite, including test_tcp_connection.py
-Simulator/                          # Part 2 — C TCP simulator
-├── plans/                          # wire protocol + phase-by-phase plan
-├── shared_protocol/                # GENERATED from SharedProtocol/spec.json
-├── third_party/                    # vendored cJSON (MIT)
-├── include/, src/                  # frame codec, accept loop, device/scenario state, handlers
-└── scenarios/                      # one JSON file per demo.py scenario
+Attack_Orchestrator_Exercise.docx   the original brief I was given
+SharedProtocol/                     the shared "message format" both programs agree on (see below)
+MultiAttackOrchestrator/            Part 1 -- the Python decision-making program, and its tests
+Simulator/                          Part 2 -- the C program that plays the role of "the device"
 ```
 
-Each part's `plans/` folder holds the reasoning this README only summarizes — start with
-`overview.md` in either one for the full picture.
+Both `MultiAttackOrchestrator/` and `Simulator/` have a `plans/` folder inside them. Before writing
+any code for a given piece, I wrote a short document explaining what I was about to build and why —
+those documents go into more depth than this README does, if you want to see the reasoning behind a
+specific piece.
 
-## Part 1 — the attack framework
+## How to actually run it
 
-### The one seam
-
-Every part of the framework that needs "the device" goes through a single abstraction,
-`DeviceConnection` (`orchestrator/connection/base.py`) — a `typing.Protocol` with five methods:
-`get_device_info`, `run_stage`, `list_files`, `read_file`, `close`. Part 1 backs it with an
-in-memory `InMemoryDeviceConnection` (`orchestrator/connection/mock.py`); Part 2's job is to add a
-`TcpDeviceConnection` that satisfies the exact same contract. Nothing above that line —
-resolution, execution, extraction, the top-level orchestrator — needs to change when the transport
-does. That was the single most important design constraint while building Part 1.
-
-### Where does probability live?
-
-Each stage carries a `success_probability`, but that's the attacker's **estimate**, used only to
-*rank* candidate attacks. It is not what determines whether a stage actually works — **the device
-decides reality**. `run_stage()` on the connection returns the true verdict (or the connection
-drops). This mirrors how a real forensic tool operates: it picks the exploit chain it *believes*
-is most reliable from historical data, but the device in front of it determines what actually
-happens. It also cleanly splits the exercise: Part 1 uses estimated probabilities to *choose*;
-Part 2's simulator is the thing that *decides outcomes*.
-
-### Ranking metric
-
-An attack's score is the product of its stages' success probabilities (independent-events
-assumption), and the resolver (`orchestrator/resolver.py`) ranks compatible attacks by that value,
-descending.
-
-**This is a deliberate simplification, and there was more than one reasonable option here.** Real
-tools weigh at least two more axes: **yield** (keychain-only vs. a full filesystem image) and
-**wipe-risk** (a failed passcode attempt can burn iOS's limited attempt counter and destroy the
-evidence — categorically worse than "costs time to retry"). Building a real multi-axis scorer felt
-like scope creep for what the exercise is testing, so instead the catalog encodes cost-of-failure
-through a narrower knob: `Attack.max_restarts`. A cheap, unpatchable bootrom exploit tolerates
-several full-chain restarts; a brute-force passcode attack sets `max_restarts=0`, so a bad attempt
-is never retried at the cost of the evidence. It's a partial answer, and the README says so rather
-than pretending the product-of-probabilities metric is the whole story.
-
-### Three kinds of failure, three different reactions
-
-| Kind | How it appears | Orchestrator reaction |
-|---|---|---|
-| Clean stage failure (exploit missed, device intact) | `StageResult` with `succeeded=False, crashed=False` | Retry in place up to the stage's `max_retries`, then give up on this attack. |
-| Crashing stage failure (exploit failed *and* panicked the device) | `StageResult` with `crashed=True` | Reconnect and restart the whole chain, bounded by the attack's `max_restarts`. |
-| Connection fault (transport died mid-call) | `ConnectionLostError` raised (or its `ConnectionTimeout` subtype) | Same as a crash: reconnect and restart the whole chain. |
-
-The first two are **return values**; the third is an **exception**. That split is deliberate, not
-incidental: a clean failure or a crash is a completed round-trip carrying the device's verdict — a
-normal outcome the protocol is designed to express. A dropped or timed-out connection means no
-verdict arrived at all. Conflating the two would blur "the device told me it broke" with "I have no
-idea what happened" — two situations with the same *recovery* (restart the chain) but different
-diagnostic value. See `orchestrator/connection/mock.py` for exactly how a mocked crash reaches this
-distinction: `run_stage()` returns a normal `StageResult(crashed=True)`, and only the connection's
-*next* call raises `ConnectionLostError`, because the device's last gasp before going unresponsive
-is itself a valid response. Part 2's wire protocol (below) mirrors this precisely on purpose.
-
-### The shared context
-
-`SingleAttackSharedContext` (`orchestrator/models/context.py`) is threaded through every stage in
-a chain attempt — a scratchpad stages can write to and later stages can read from, reset fresh on
-every restart (since a crash resets the device too, any accumulated values are stale). Most stages
-never touch it; `ContextDependentStage` (`orchestrator/models/attack.py`) is the one that does — a
-stage whose `attempt()` refuses to even contact the device if a dependency isn't in the context yet
-(`orchestrator/attacks/catalog.py`'s `KEYBAG_CHAIN`: a class-key leak feeds a keybag-unwrap stage
-that cannot run without it). That refusal is a plain `StageResult.fail(...)`, not a new control-flow
-path — the orchestrator's existing retry/restart/fallback logic handles it unchanged.
-
-### Extraction
-
-Once an attack succeeds, `DataExtractor` (`orchestrator/extraction.py`) pulls data off the device
-via `list_files`/`read_file` on the same connection, in four modes (`unlock`-only, `single_file`,
-`multi_files`, `all_files`). Extraction is per-file: `ExtractionOutcome` carries one `FileResult`
-per requested path, so a run can be reported as **partial** (some files pulled, some missing or the
-connection dropped mid-pull) rather than collapsing to a single pass/fail boolean.
-
-### Illegal states, made unrepresentable
-
-Two of the value types went through a deliberate typing pass: `StageResult` originally stored
-`succeeded`/`crashed` as two independent booleans, which could represent the nonsensical
-"succeeded and crashed" — it's now a `StageResultType` enum (`SUCCESS`/`LOGIC_FAILURE`/`CRASH`)
-with `succeeded`/`crashed` as derived properties. `FileResult` originally stored `succeeded` as its
-own field alongside `data`, which could drift out of sync with the data it described — `succeeded`
-is now inferred from `data is not None` (checked with `is not None`, not truthiness, so a
-legitimately empty file isn't misreported as a failure). Same idea applied to `AttackResult`, which
-uses an `AttackResultType` enum for the same reason.
-
-### Running it
+If you want to see it working rather than just reading about it:
 
 ```bash
 cd MultiAttackOrchestrator
-python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'   # requires Python >= 3.11
+python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'    # needs Python 3.11 or newer
 
-.venv/bin/pytest -q                                           # 84 tests
-.venv/bin/mypy orchestrator --ignore-missing-imports           # clean
-
-.venv/bin/python -m orchestrator.demo                          # narrated end-to-end scenarios
+.venv/bin/pytest -q                                            # runs all the automated checks
+.venv/bin/python -m orchestrator.demo                          # runs a set of example scenarios
 ```
 
-`demo.py` runs eight scenarios end-to-end against the mock — happy path, retry-then-succeed,
-crash-then-restart, connection-drop-then-restart, fallback-after-failure, battery-drift causing a
-mid-run skip, total failure, all four extraction modes, and the context-dependency stage from
-above — with full INFO-level logging so the narrative (stage attempts, retries, restarts, skips) is
-visible, not just the final result.
+The last command runs several example scenarios back to back and prints out, step by step, what
+the program is doing and why — a method being tried, a step failing and being retried, something
+going wrong and the whole attempt restarting, and so on. It's the fastest way to get a feel for how
+the thing behaves.
 
-## Part 2 — the device simulator
-
-A single-threaded C TCP server that plays the device's role for real, well enough that
-`TcpDeviceConnection` satisfies `DeviceConnection` exactly like the mock does — meaning zero changes
-to anything above the seam (`MultiAttackOrchestrator`, `SingleAttackOrchestrator`, `AttackResolver`,
-`DataExtractor`). Only two new Python files were added: `connection/tcp.py`
-(`TcpDeviceConnection` + `TcpConnectionProvider`) and the generated `shared_protocol/`.
-
-**Proof the promise held:** `demo.py` and `demo.py --tcp` run the same 9 scenarios against the mock
-and the real simulator respectively, and their `RESULT:`/`attempt:`/extraction-summary log lines
-are **byte-identical** across all of them (67/67 comparable lines, diffed with timestamps and
-connection ports stripped). Building this surfaced one real gap along the way: `RUN_STAGE`'s
-`RES_OK` originally never carried a payload (a v1 stub, flagged in the phase D plan as "can be
-added later if a scenario needs it") — `KEYBAG_CHAIN`'s second stage genuinely needs one, so
-scenario JSON files can now script `"payload": "..."` on an `ok` event and the C handler sends it
-for real.
-
-### Config-driven, not compiled-in
-
-The simulator has no `switch` over specific stage IDs or file paths. It loads a **scenario JSON
-file** at startup (device attributes, a virtual filesystem, per-stage scripted outcomes) and
-interprets it generically — deliberately mirroring Part 1's `DeviceState` + `ScriptedBehavior`
-shape, so a test author learns one mental model for both sides. Stage IDs and paths are pure data
-on the wire, never something that needs to stay in sync in *compiled* code on either side.
-
-**What's genuinely shared vs. not:** a literal shared module across Python and C isn't possible,
-but a single source of truth for the parts that must match bit-for-bit is — the wire opcodes and
-frame format are generated from one `SharedProtocol/spec.json` (a folder sibling to
-`MultiAttackOrchestrator/` and `Simulator/`) into `orchestrator/shared_protocol/wire_protocol.py`
-and `Simulator/shared_protocol/protocol_ids.h`, each headed with a `GENERATED — DO NOT EDIT`
-comment. A test (`test_shared_protocol.py`) regenerates both in-memory and diffs them against what's
-committed, so an edit to `spec.json` without regenerating fails loudly. Stage IDs/paths don't need
-that treatment, since the simulator never hardcodes them — `spec.json`'s `canonical_stage_ids` is
-shared *vocabulary*, not a contract anything enforces.
-
-### Wire protocol v1
-
-Frame, both directions: `[1 byte type][4 bytes length, big-endian][length bytes payload]`.
-
-| Byte | Request | Payload |
-|---|---|---|
-| `0x01` | `REQ_GET_INFO` | *(empty)* |
-| `0x02` | `REQ_RUN_STAGE` | stage_id (UTF-8) |
-| `0x03` | `REQ_LIST_FILES` | *(empty)* |
-| `0x04` | `REQ_READ_FILE` | path (UTF-8) |
-
-| Byte | Response | Meaning | After sending |
-|---|---|---|---|
-| `0x81` | `RES_OK` | success — `GET_INFO`: `"<model>\|<ios>\|<battery>"`; `RUN_STAGE`: an optional scripted payload (→ `SingleAttackSharedContext`, empty by default); `LIST_FILES`: newline-joined sorted paths; `READ_FILE`: raw file bytes | connection stays open |
-| `0x82` | `RES_FAIL` | clean logical failure (`RUN_STAGE` only) | connection stays open |
-| `0x83` | `RES_CRASH` | failure that also crashed the device (`RUN_STAGE` only) | **server closes the socket** |
-| `0x84` | `RES_FILE_ERROR` | file missing/inaccessible (`READ_FILE` only) | connection stays open |
-| `0x85` | `RES_PROTOCOL_ERROR` | malformed/unrecognized request | server closes the socket |
-
-No explicit close request — the client just closes the TCP connection; the server detects EOF and
-returns to `accept()`.
-
-**The crash design point, matching Part 1 exactly:** `RES_CRASH` sends a *complete* frame — the
-client still learns the reason — and only *then* does the server close the socket. A `DROP`
-scenario is the opposite: zero bytes written, socket closed immediately, indistinguishable from a
-real network failure. This is precisely the return-value-vs-exception split Part 1 already commits
-to (see above), so `SingleAttackOrchestrator`'s logic runs unchanged against a real simulator.
-Timeouts are purely client-side (`socket.settimeout()` → `ConnectionTimeout`); no server support
-needed for v1.
-
-### Build and run
+To also build and try the C program:
 
 ```bash
-cd Simulator && make                                    # -Wall -Wextra -std=c11, zero warnings
-./simulator 9500 scenarios/03_crash_then_restart.json    # standalone, talk to it with any client
+cd Simulator && make                                     # builds the practice "device"
+.venv/bin/python -m orchestrator.demo --tcp               # same example scenarios, but talking
+                                                            # to the real C program this time
 ```
 
-```bash
-cd MultiAttackOrchestrator
-.venv/bin/python -m orchestrator.demo             # in-memory mock
-.venv/bin/python -m orchestrator.demo --tcp        # real simulator: one subprocess per scenario,
-                                                    # built from Simulator/scenarios/*.json
-```
+## Part 1 — the decision-making program
 
-```python
-from orchestrator.connection import TcpConnectionProvider
-provider = TcpConnectionProvider()   # drop-in for MockConnectionProvider — the entire swap
-```
+### Everything talks to "the device" through one single doorway
 
-### Why cJSON, vendored
+The most important decision I made in this whole project was to have every part of the
+decision-making code talk to "the device" through exactly one narrow interface — a small,
+well-defined set of things you can ask a device to do (tell me about yourself, attempt this step,
+list your files, give me this file). Nothing else in the program is allowed to know or care whether
+the thing on the other end of that interface is my pretend stand-in device or the real C program
+from Part 2.
 
-The scenario format needed real JSON parsing, and hand-rolling one for a take-home exercise felt
-like effort spent on the wrong thing. cJSON v1.7.19 (MIT-licensed, single C file, pinned to the
-upstream release tag) is vendored directly into `Simulator/third_party/` rather than pulled as a
-system dependency, so `make` has no external requirements beyond a C compiler.
+The payoff of that decision is exactly what you'd hope for: I built and fully tested all the
+decision-making logic against the pretend device first, and then when the real C program was ready,
+plugging it in required changing **nothing** in the decision-making code — only one small new file
+that knows how to speak over the network. I verified this directly: I ran the same set of example
+scenarios against the pretend device and against the real program, and the results — what was
+attempted, what succeeded or failed, in what order — came back identical both times.
 
-## Part 3 — tests against the simulator
+### A method's "chance of success" is just an estimate — it isn't what actually happens
 
-`tests/test_tcp_connection.py` reuses the exact scenario shape and `TcpConnectionProvider` from
-Part 2, and deliberately mirrors `test_connection.py` test-for-test (fixture launches the real
-simulator binary as a subprocess per test, against a temp scenario file): scripted retry, crash
-kills the connection, reconnect revives it and continues the same scripted queue, battery drain, a
-missing file, drop-on-read. 13/13 passing on the first real run, over a real socket instead of the
-mock — the actual proof the seam held, not just an assertion that it should. The two places the
-mock's assertions couldn't carry over unchanged are called out inline in the test file: the C side
-has no `DeviceState.alive` equivalent (a real socket's liveness *is* the connection's liveness), and
-`RUN_STAGE`'s payload is opt-in per scenario rather than always present.
+Every method the program can try comes with a number representing how likely I estimate it is to
+work. That number is only ever used to decide **which order to try things in** — it is never used
+to decide whether something actually works. Whether a step actually works is entirely up to the
+device it's talking to (real or pretend) — the program asks the device to attempt the step, and the
+device's answer is the only thing that matters.
 
-Broader coverage (property-based fuzzing of the frame codec, deliberately malformed/oversized
-payloads beyond the two exercise here, concurrent-client stress since the server is single-threaded
-by design) is the one item left unstarted — a reasonable next slice, not required to call the seam
-proven.
+I think this is a realistic way to model it: a real tool would also pick what it *believes* is the
+most reliable approach based on past experience, but reality still has the final say once it's
+actually running against a real device in front of it.
 
-## Notable design tradeoffs (more than one reasonable option existed)
+### How the program decides which method to try first
 
-- **Product-of-probabilities ranking vs. a multi-axis scorer** — see "Ranking metric" above; chose
-  the simpler metric and documented what it leaves out (yield, wipe-risk) rather than build a
-  scorer the exercise wasn't really asking for.
-- **Exceptions for transport faults, return values for logical outcomes** — rejected using
-  exceptions for everything (would make ordinary retry-driving control flow via `except`, which
-  reads worse and conflates "the device answered" with "nothing came back").
-- **A `typing.Protocol` for `DeviceConnection`, not an ABC** — structural typing means
-  `TcpDeviceConnection` in Part 2 satisfies the contract without inheriting from anything in Part
-  1, which suits a class that lives across a process/language boundary.
-- **Config-driven C simulator over compiled-in stage IDs** — considered hardcoding the sample
-  catalog's stage IDs directly in C, but that would mean every new Python-side attack needs a
-  matching C code change, defeating the point of a generic device stand-in.
-- **Generated protocol module/header from one spec vs. two hand-maintained copies** — the wire
-  format is the one place Python and C genuinely must agree bit-for-bit, so it's generated from a
-  single `SharedProtocol/spec.json` with a drift-detecting test, rather than trusted to stay in
-  sync by hand.
-- **Single-threaded, one-connection-at-a-time server, no `select()`/threads** — a deterministic
-  test double never needs concurrent clients, and the complexity that buys (locking shared
-  scenario/device state across threads) has no payoff here. The tradeoff bites only if something
-  ever needs two simultaneous sessions against one simulator, which nothing in this exercise does.
-- **Fixed-size buffers everywhere in the C server (`stage_id[64]`, `path[256]`, …), length-checked
-  against the wire before every copy** — the realistic way this server crashes for real isn't a
-  scripted scenario, it's an oversized or adversarial length field; Python never had to think about
-  this class of bug at all, which is exactly the "think across a language boundary" the exercise
-  asks for.
+For a method made up of several steps, I multiply together the estimated success chance of each
+step to get one overall score for that method, and the program tries the most promising method
+first, falling back to the next one if it doesn't work.
+
+I want to be upfront that this is a simplified way of ranking things. A more complete version of
+this tool would also weigh other things — for example, how much useful data a method can actually
+recover, or how costly it is if an attempt fails. I didn't think building a fully realistic scoring
+system was the point of this exercise, so instead I added one narrower safety knob: each method has
+a limit on how many times it's allowed to restart from scratch after something goes wrong.
+Cheaper, safer methods are allowed to restart several times; a method where a failed attempt is
+more costly is set to not restart at all. It's a partial answer to a bigger question, and I'd rather
+say that plainly than pretend the simple scoring covers everything.
+
+### Three different ways a step can go wrong, handled three different ways
+
+| What happened | What the program does about it |
+|---|---|
+| The step just didn't work this time, but the device is fine | Try that same step again, up to a limited number of times, before giving up on this method. |
+| The step didn't work **and** it broke the device's current session | Reconnect and start this method over completely from its first step. |
+| The connection to the device was lost entirely (dropped, or timed out) | Same as above: reconnect and start the method over from the beginning. |
+
+The first two are treated as *normal answers* the program gets back — "it worked," "it didn't,"
+"it didn't and something broke." The third is treated differently, as an actual error, because
+it means something more fundamental: the program didn't get an answer *at all*. I kept those two
+situations separate on purpose. "The device told me it broke" and "I have no idea what happened to
+the device" call for the same recovery action here, but they're genuinely different situations, and
+collapsing them into one thing would have thrown away information that's useful when you're trying
+to understand what a run actually did.
+
+### Steps that need to remember something from an earlier step
+
+Most steps in a method are self-contained. But I also wanted to demonstrate a case where a later
+step genuinely needs a piece of information an earlier step produced — for example, a step that
+can't even attempt anything until an earlier step has handed it something to work with. I built a
+small shared notebook that's passed along through every step of one attempt: a step can write a
+result into it, and a later step can read from it. If that later step's information is missing —
+because the earlier step never produced it — the step refuses to even contact the device and
+reports a normal, ordinary failure instead. Nothing else about the program needed to change to
+support this; a "missing information" failure is handled exactly the same way any other failure is.
+
+### Getting data off the device once something works
+
+Once a method succeeds, a separate part of the program copies data off the device. You can ask for
+just confirmation that it's unlocked, one specific file, a specific list of files, or everything on
+the device. The result is honest about partial success — if you asked for five files and only three
+came back (one didn't exist, say, or the connection dropped partway through), the program tells you
+exactly that, rather than reporting one single pass/fail answer for the whole request.
+
+### Making impossible situations actually impossible
+
+While reviewing my own code, I found a couple of places where the data types I'd chosen could
+technically represent a situation that doesn't make sense — for example, a step result that claimed
+to have both "succeeded" and "broken the device" at the same time, which should never happen
+together. I went back and changed those types so that the nonsensical combination genuinely cannot
+be constructed anymore, rather than just being "a case I promise never happens." I'd rather the
+program's own data types rule it out than rely on remembering not to do it.
+
+## Part 2 — the practice device
+
+This is a second, separate program, written in C, that stands in for a real device. It runs on its
+own and listens for a connection over the network, the same way a real device would — and Part 1
+talks to it exactly the same way it would talk to a real one, because of the "one single doorway"
+decision described above.
+
+**Proof it actually behaves the same as the pretend stand-in:** I ran the exact same set of example
+scenarios against both — the in-memory pretend device, and the real, separate C program — and
+diffed the results. Every single one came back identical: same method chosen, same order of
+attempts, same successes and failures. That, to me, is the real proof that the "one doorway"
+decision from Part 1 paid off the way it was supposed to.
+
+### Both programs need to agree on exactly how they talk to each other
+
+Since Part 1 (Python) and Part 2 (C) are two completely separate programs talking over a network,
+they both need to agree — down to the exact byte — on the format of the messages they send back and
+forth. Rather than writing that format twice by hand (and risking the two copies quietly drifting
+apart over time), I wrote it once, in a plain data file, and used a small script to automatically
+generate the matching code for both sides from that one file. If I ever need to change the message
+format, I change it in one place and regenerate both sides — there's no way for them to end up out
+of sync. There's an automated check that catches it immediately if someone edits the generated code
+by hand instead of regenerating it.
+
+The messages themselves are simple: the Python side can ask the device four things — tell me about
+yourself, attempt this step, list your files, or give me this file. The device can answer with: it
+worked, it didn't work (but the device is fine), it broke, the file wasn't found, or something about
+the message didn't make sense. One detail I was careful about: when a step "breaks" the device, the
+device still sends back one complete, proper answer explaining what happened — and only *after*
+that does it go silent. That mirrors exactly how the pretend stand-in device behaves, which is why
+Part 1's code doesn't need to know or care which one it's actually talking to.
+
+### The practice device reads its setup from a file — nothing is hardcoded
+
+Rather than baking specific method or step names into the C program itself, it reads everything it
+needs — what the pretend device looks like, what files it has, how each step should behave — from a
+plain text file when it starts up. That means I can add a new method on the Python side without
+ever touching the C program again; I just describe the new scenario in a text file. There's a folder
+of example scenario files, one per example in the demo I mentioned above.
+
+### A couple of smaller, practical decisions
+
+- I used a small, well-known, freely licensed library to read those text-file setups, rather than
+  writing my own code to parse that format — that felt like effort better spent on the parts of the
+  exercise that actually mattered.
+- The C program only ever deals with one connection at a time. It doesn't try to handle several at
+  once, because nothing about this exercise actually needed that, and handling several at once
+  would have added real complexity for no real benefit here.
+- C doesn't automatically stop you from reading more data into a fixed-size space than it can hold,
+  the way Python does — so throughout the C program, every piece of incoming data is checked
+  against the space available for it before it's copied anywhere. This isn't something I had to
+  think about at all on the Python side; it's one of the genuine differences between the two
+  languages that this exercise was clearly designed to make me confront.
+- I also added logging throughout the C program, so if you run it yourself you can watch it narrate
+  each connection and each request it receives, the same way the Python side already narrates what
+  it's doing.
+
+## Part 3 — testing the whole thing together
+
+I wrote automated tests that actually launch the real C program and check that Part 1 behaves
+correctly against it — not just against the pretend stand-in. These tests deliberately reuse the
+same set of checks that were already written against the pretend device, just pointed at the real
+program instead. All of them pass. The fact that the same checks pass against both the pretend
+device and the real one is itself further evidence that the two behave the same way.
+
+One area I'd still like to expand, if I had more time, is testing the C program with more
+deliberately unusual or malformed input, and testing what happens if several connections show up
+at once (even though, as noted above, the program is intentionally built to handle one at a time).
+Neither of those feels required to call this exercise finished, but they're the honest next step.
+
+## A few decisions I want to explain directly
+
+The exercise notes that I should call out places where I saw more than one reasonable option and
+explain what I chose and why. Here's a summary of the main ones, most of which are also explained
+in more depth above:
+
+- **A simple scoring system for ranking methods, instead of a more complete one.** I explained the
+  reasoning above — I didn't think a fully realistic multi-factor scoring system was the point of
+  this exercise, so I built the simpler version and was explicit about what it leaves out, rather
+  than pretending it covers everything.
+- **Treating "no answer at all" differently from "an answer that says it didn't work."** Also
+  explained above — I think collapsing those two into one thing would have thrown away useful
+  information, even though the program's recovery step happens to be the same either way.
+- **A general "rulebook" for talking to a device, rather than requiring one specific base class.**
+  This is what let the real, separate C program and the in-memory pretend device both count as
+  valid devices, without being related to each other in the code at all — which suits two things
+  that live on opposite sides of a network connection and are written in different languages.
+- **The practice device reads its setup from a file, instead of having methods built into its own
+  code.** I considered just hardcoding the example methods directly into the C program, but that
+  would mean every new method added on the Python side also needs a matching change to the C
+  program — which defeats the point of having a generic stand-in device at all.
+- **One shared message-format file that generates matching code for both languages**, instead of
+  writing that format by hand twice. This is the one place where the two programs genuinely have to
+  agree byte-for-byte, so I didn't want to trust that to two hand-maintained copies staying in sync.
+- **The practice device handles one connection at a time, deliberately kept simple.** Since this
+  exercise needed a predictable, easy-to-reason-about stand-in rather than a production server, I
+  didn't see a reason to take on the real complexity that handling multiple connections at once
+  would have required.
