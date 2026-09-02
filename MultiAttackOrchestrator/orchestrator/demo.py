@@ -69,8 +69,11 @@ def _wait_until_listening(port: int, proc: subprocess.Popen, timeout: float = 3.
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if proc.poll() is not None:
-            stderr = proc.stderr.read() if proc.stderr else ""
-            raise RuntimeError(f"simulator exited early (rc={proc.returncode}): {stderr}")
+            # stderr isn't piped (see _launch_simulator) -- whatever the simulator printed
+            # already landed directly in this terminal, above.
+            raise RuntimeError(
+                f"simulator exited early (rc={proc.returncode}) -- see its output above"
+            )
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=0.2):
                 return
@@ -84,14 +87,17 @@ def _launch_simulator(scenario_file: str):
     """Launches Simulator/simulator as a subprocess against one scenario file, on a fresh port
     unless --tcp was given a fixed one. Torn down on exit — one subprocess per scenario, per
     phase F's recommended simplification (the scenario file is fixed at startup via argv anyway,
-    and each demo scenario is already an independent, freshly-constructed run)."""
+    and each demo scenario is already an independent, freshly-constructed run).
+
+    The simulator's stderr is *not* piped -- it inherits this process's stderr directly, so its
+    per-request log lines (server.c/handlers.c) interleave with the orchestrator's own logger
+    output in the same terminal. That's the whole point of running --tcp instead of the mock:
+    watching both sides of the wire narrate the same exchange."""
     port = _tcp_port or _free_port()
     scenario_path = SCENARIOS_DIR / scenario_file
     proc = subprocess.Popen(
         [str(SIMULATOR_BIN), str(port), str(scenario_path)],
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        text=True,
     )
     try:
         _wait_until_listening(port, proc)
