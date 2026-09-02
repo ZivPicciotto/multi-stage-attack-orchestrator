@@ -16,6 +16,7 @@ from orchestrator.connection.mock import (
 )
 from orchestrator.connection.provider import DeviceConnectionProvider, MockConnectionProvider
 from orchestrator.connection.session import DeviceSession
+from orchestrator.connection.tcp import TcpConnectionProvider, TcpDeviceConnection
 
 __all__ = [
     "DeviceConnection",
@@ -30,5 +31,7 @@ __all__ = [
     "InMemoryDeviceConnection",
     "DeviceConnectionProvider",
     "MockConnectionProvider",
+    "TcpDeviceConnection",
+    "TcpConnectionProvider",
     "DeviceSession",
 ]
