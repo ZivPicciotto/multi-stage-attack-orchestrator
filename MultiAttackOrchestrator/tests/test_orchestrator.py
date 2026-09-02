@@ -15,7 +15,7 @@ from orchestrator.models import (
     SingleStage,
     StageResult,
 )
-from orchestrator.orchestrator import MultiAttackOrchestrator
+from orchestrator.multi_attack_orchestrator import MultiAttackOrchestrator
 from orchestrator.resolver import AttackResolver
 
 TARGET = ConnectionTarget("localhost", 9999)

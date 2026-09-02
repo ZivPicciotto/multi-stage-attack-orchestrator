@@ -18,7 +18,7 @@ from orchestrator.config import ConnectionTarget, OrchestratorConfig
 from orchestrator.connection import DROP, DeviceState, FakeConnectionProvider, ScriptedBehavior
 from orchestrator.logging_config import configure_logging
 from orchestrator.models import ExtractionMode, ExtractionRequest, IOSVersion, StageResult
-from orchestrator.orchestrator import MultiAttackOrchestrator
+from orchestrator.multi_attack_orchestrator import MultiAttackOrchestrator
 
 logger = logging.getLogger("demo")
 
