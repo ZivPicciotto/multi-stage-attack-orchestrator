@@ -41,7 +41,7 @@ class DataExtractor:
                 data = connection.read_file(path)
             except RemoteFileError as e:
                 logger.info("extraction: %r failed: %s", path, e)
-                results.append(FileResult(path, succeeded=False, error=str(e)))
+                results.append(FileResult(path, error=str(e)))
                 continue  # one file missing doesn't stop the rest
             except ConnectionLostError as e:
                 # The session died mid-pull. We do not silently reconnect: a fresh connection
@@ -59,7 +59,7 @@ class DataExtractor:
                     error=f"connection lost after {len(results)}/{len(paths)}: {e}",
                 )
             logger.info("extraction: %r OK (%d bytes)", path, len(data))
-            results.append(FileResult(path, succeeded=True, data=data))
+            results.append(FileResult(path, data=data))
 
         outcome = ExtractionOutcome(mode, tuple(results))
         logger.info(

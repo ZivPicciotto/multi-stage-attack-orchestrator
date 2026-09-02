@@ -149,6 +149,19 @@ class TestAttack:
             Attack("a", (), DeviceCompatibilityReqs())
 
 
+class TestFileResult:
+    def test_succeeded_inferred_from_data_present(self):
+        assert FileResult("/a", b"hello").succeeded
+
+    def test_failed_inferred_from_no_data(self):
+        assert not FileResult("/a", error="missing").succeeded
+
+    def test_empty_file_is_still_success_not_truthiness(self):
+        # b"" is falsy but not None — succeeded must check `is not None`, not truthiness,
+        # or a legitimately empty file would be misreported as a failure.
+        assert FileResult("/a", b"").succeeded
+
+
 class TestExtractionOutcome:
     def test_unlock_always_succeeds(self):
         assert ExtractionOutcome(ExtractionMode.UNLOCK).succeeded
@@ -156,27 +169,27 @@ class TestExtractionOutcome:
     def test_all_succeeded(self):
         o = ExtractionOutcome(
             ExtractionMode.MULTI_FILES,
-            (FileResult("/a", True, b"x"), FileResult("/b", True, b"y")),
+            (FileResult("/a", b"x"), FileResult("/b", b"y")),
         )
         assert o.succeeded and not o.partial
 
     def test_some_succeeded_is_partial(self):
         o = ExtractionOutcome(
             ExtractionMode.MULTI_FILES,
-            (FileResult("/a", True, b"x"), FileResult("/b", False, error="missing")),
+            (FileResult("/a", b"x"), FileResult("/b", error="missing")),
         )
         assert not o.succeeded and o.partial
 
     def test_all_failed_is_not_partial(self):
         o = ExtractionOutcome(
             ExtractionMode.MULTI_FILES,
-            (FileResult("/a", False, error="e1"), FileResult("/b", False, error="e2")),
+            (FileResult("/a", error="e1"), FileResult("/b", error="e2")),
         )
         assert not o.succeeded and not o.partial
 
     def test_dropped_mid_pull_is_partial(self):
         o = ExtractionOutcome(
-            ExtractionMode.ALL_FILES, (FileResult("/a", True, b"x"),), error="lost"
+            ExtractionMode.ALL_FILES, (FileResult("/a", b"x"),), error="lost"
         )
         assert not o.succeeded and o.partial
 

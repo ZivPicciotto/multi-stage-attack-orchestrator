@@ -9,6 +9,12 @@ from orchestrator.models.extraction import ExtractionMode
 from orchestrator.models.phases import OrchestrationPhase
 
 
+class ResultType(Enum):
+    SUCCESS = "success"
+    LOGIC_FAILURE = "logic_failure"
+    CRASH = "crash"
+
+
 @dataclass(frozen=True)
 class StageResult:
     """One stage attempt's verdict. Returned by the connection, passed through by the stage.
@@ -16,26 +22,36 @@ class StageResult:
     Whether a failure *crashed* the device is the device's verdict, not a fixed property of the
     stage: the same exploit can fail cleanly one attempt and panic the device the next. The
     orchestrator retries a clean failure in place but must restart the whole chain on a crash.
+
+    A single ResultType discriminant (rather than two independent booleans) makes the invalid
+    combination "succeeded and crashed" unrepresentable instead of just unused.
     """
 
-    succeeded: bool
+    result_type: ResultType
     payload: bytes | None = None  # data the device returned on success (-> shared context)
     reason: str | None = None  # human-readable explanation on failure
-    crashed: bool = False  # a failure that also left the device unusable (panic / reboot)
+
+    @property
+    def succeeded(self) -> bool:
+        return self.result_type is ResultType.SUCCESS
+
+    @property
+    def crashed(self) -> bool:
+        return self.result_type is ResultType.CRASH
 
     @classmethod
     def ok(cls, payload: bytes | None = None) -> StageResult:
-        return cls(succeeded=True, payload=payload)
+        return cls(ResultType.SUCCESS, payload=payload)
 
     @classmethod
     def fail(cls, reason: str) -> StageResult:
         """A clean logical failure — the device is intact and the stage may be retried in place."""
-        return cls(succeeded=False, reason=reason)
+        return cls(ResultType.LOGIC_FAILURE, reason=reason)
 
     @classmethod
     def crash(cls, reason: str) -> StageResult:
         """A failure that also crashed the device — the chain must restart on a fresh connection."""
-        return cls(succeeded=False, reason=reason, crashed=True)
+        return cls(ResultType.CRASH, reason=reason)
 
 
 class AttackStatus(Enum):
@@ -83,10 +99,16 @@ class AttackResult:
 
 @dataclass(frozen=True)
 class FileResult:
+    """Exactly one of data/error is set — succeeded is inferred, not stored, so the two can
+    never be constructed out of sync (e.g. succeeded=True with no data)."""
+
     path: str
-    succeeded: bool
     data: bytes | None = None
     error: str | None = None
+
+    @property
+    def succeeded(self) -> bool:
+        return self.data is not None  # `is not None`, not truthiness — an empty file is b""
 
 
 @dataclass(frozen=True)

@@ -15,6 +15,7 @@ from orchestrator.models.results import (
     ExtractionOutcome,
     FileResult,
     MultiAttackResult,
+    ResultType,
     StageResult,
 )
 
@@ -27,6 +28,7 @@ __all__ = [
     "ExtractionMode",
     "ExtractionRequest",
     "StageResult",
+    "ResultType",
     "AttackStatus",
     "AttackResult",
     "FileResult",
