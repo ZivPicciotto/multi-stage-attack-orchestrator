@@ -5,7 +5,7 @@ read and write the wire frame from phase A — with no domain logic yet. Every r
 `RES_PROTOCOL_ERROR` echo. This isolates "can we reliably speak the framing" from "does the
 simulator behave like a device," so bugs in one don't hide bugs in the other.
 
-**Depends on:** phase A (needs `protocol_ids.h`). **Unlocks:** phases C and D.
+**Depends on:** phase A — done (needs `shared_protocol/protocol_ids.h`). **Unlocks:** phases C and D.
 
 **Files:** `Simulator/src/{main,server,frame}.c`, `Simulator/include/frame.h`, `Simulator/Makefile`.
 

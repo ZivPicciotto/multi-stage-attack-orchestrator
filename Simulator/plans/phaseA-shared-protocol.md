@@ -6,12 +6,17 @@ opcode (should we ever need one) is added in exactly one place instead of two.
 **Depends on:** nothing new (Part 1 is done). **Unlocks:** phases B and E, which both need the
 generated constants.
 
-**Files:** `protocol/spec.json`, `protocol/generate.py`, generated
-`MultiAttackOrchestrator/orchestrator/wire_protocol.py` and `Simulator/include/protocol_ids.h`.
+**Files:** `SharedProtocol/spec.json`, `SharedProtocol/generate.py` (a sibling folder to
+`MultiAttackOrchestrator/` and `Simulator/`), generated
+`MultiAttackOrchestrator/orchestrator/shared_protocol/wire_protocol.py` and
+`Simulator/shared_protocol/protocol_ids.h`.
+
+**Status: done.** Both generated files are committed; `tests/test_shared_protocol.py` regenerates
+in-memory and diffs against them on every test run.
 
 ---
 
-## `protocol/spec.json`
+## `SharedProtocol/spec.json`
 
 ```json
 {
@@ -46,7 +51,7 @@ Part 1 attack catalog draw from one shared vocabulary instead of inventing near-
 (`"kernel_rw"` vs `"kernelrw"`). A test *may* assert the Part 1 catalog's stage IDs are a subset
 of this list (nice-to-have, not required).
 
-## `protocol/generate.py`
+## `SharedProtocol/generate.py`
 
 Pure stdlib (`json`, string templating — no dependencies, consistent with keeping the codegen tool
 itself trivial to trust by reading it). Two output functions:
@@ -57,12 +62,14 @@ def generate_python(spec: dict) -> str:
 
 def generate_c_header(spec: dict) -> str:
     """Emits #define constants for every opcode, guarded with #ifndef, plus a header comment
-    pointing back at protocol/spec.json as the source of truth."""
+    pointing back at SharedProtocol/spec.json as the source of truth."""
 ```
 
-Both outputs get a `# GENERATED FROM protocol/spec.json — DO NOT EDIT` header comment (`//` for
-C). Run via `python protocol/generate.py`, writing both files in one invocation so they can never
-individually drift out of running the generator.
+Both outputs get a `GENERATED FROM SharedProtocol/spec.json — DO NOT EDIT` header comment (`#` for
+Python, `/* */` for C). Run via `python SharedProtocol/generate.py`, writing both files in one
+invocation so they can never individually drift out of running the generator. Output paths are
+computed from the script's own location (`Path(__file__).resolve().parent.parent`), not the
+working directory, so it can be run from anywhere.
 
 **Decision — commit the generated files.** Regenerating on every build would mean the C side needs
 Python available just to compile, which is backwards for a C project. Instead, the generated files
@@ -71,18 +78,22 @@ Python suite) re-runs the generator into a temp location and diffs against what'
 failing loudly if someone hand-edited a generated file or forgot to regenerate after touching
 `spec.json`. This is the standard "generated-and-committed, drift-checked in CI" pattern.
 
-## Sketch of the generated Python module
+## The generated Python module (`orchestrator/shared_protocol/wire_protocol.py`)
 
 ```python
-# GENERATED FROM protocol/spec.json — DO NOT EDIT. Run: python protocol/generate.py
+# GENERATED FROM SharedProtocol/spec.json — DO NOT EDIT. Run: python SharedProtocol/generate.py
+
+from __future__ import annotations
 
 from enum import IntEnum
+
 
 class RequestType(IntEnum):
     GET_INFO = 1
     RUN_STAGE = 2
     LIST_FILES = 3
     READ_FILE = 4
+
 
 class ResponseType(IntEnum):
     OK = 129
@@ -91,38 +102,56 @@ class ResponseType(IntEnum):
     FILE_ERROR = 132
     PROTOCOL_ERROR = 133
 
-FRAME_TYPE_SIZE = 1
-FRAME_LENGTH_SIZE = 4
-FRAME_BYTE_ORDER = "big"
+
+FRAME_TYPE_SIZE: int = 1
+FRAME_LENGTH_SIZE: int = 4
+FRAME_BYTE_ORDER: str = 'big'
+
+CANONICAL_STAGE_IDS: tuple[str, ...] = (
+    'dfu', 'bootrom', 'payload', 'leak', 'kernel_rw', 'escalate', 'pair', 'bruteforce',
+)
 ```
 
-## Sketch of the generated C header
+A hand-written `orchestrator/shared_protocol/__init__.py` re-exports these names, matching the
+rest of the package's `__init__.py` convention (see `models/__init__.py`, `connection/__init__.py`).
+
+## The generated C header (`Simulator/shared_protocol/protocol_ids.h`)
 
 ```c
-/* GENERATED FROM protocol/spec.json — DO NOT EDIT. Run: python protocol/generate.py */
+/* GENERATED FROM SharedProtocol/spec.json — DO NOT EDIT. Run: python SharedProtocol/generate.py */
+
 #ifndef PROTOCOL_IDS_H
 #define PROTOCOL_IDS_H
 
-#define REQ_GET_INFO    0x01
-#define REQ_RUN_STAGE   0x02
-#define REQ_LIST_FILES  0x03
-#define REQ_READ_FILE   0x04
+#define REQ_GET_INFO       0x01
+#define REQ_RUN_STAGE      0x02
+#define REQ_LIST_FILES     0x03
+#define REQ_READ_FILE      0x04
 
-#define RES_OK              0x81
-#define RES_FAIL            0x82
-#define RES_CRASH           0x83
-#define RES_FILE_ERROR      0x84
-#define RES_PROTOCOL_ERROR  0x85
+#define RES_OK             0x81
+#define RES_FAIL           0x82
+#define RES_CRASH          0x83
+#define RES_FILE_ERROR     0x84
+#define RES_PROTOCOL_ERROR 0x85
 
 #define FRAME_TYPE_SIZE_BYTES   1
 #define FRAME_LENGTH_SIZE_BYTES 4
 
-#endif
+#endif /* PROTOCOL_IDS_H */
 ```
 
-## Tests
+## Tests (`MultiAttackOrchestrator/tests/test_shared_protocol.py`) — done
 
-- `generate_python`/`generate_c_header` produce byte-identical output to what's committed
-  (`test_protocol_spec.py`, run via a temp-dir regeneration + diff).
-- Spot-check: every value in `spec.json`'s `requests`/`responses` is a distinct byte, and requests
-  and responses occupy disjoint ranges (guards against a future hand-edit introducing a collision).
+- `generate_python`/`generate_c_header` produce output identical to what's committed. Rather than
+  regenerating into a temp dir and diffing files, the test loads `generate.py` by file path
+  (`importlib.util.spec_from_file_location` — it lives outside the `orchestrator` package on
+  purpose, since it's shared with the C side) and compares its in-memory output directly against
+  `Path.read_text()` of the committed files. Same guarantee, no filesystem round-trip.
+- Spot-check: every value in `spec.json`'s `requests`/`responses` is a distinct byte in range, and
+  requests/responses occupy disjoint ranges (guards against a future hand-edit introducing a
+  collision).
+- The generated `RequestType`/`ResponseType` are importable from `orchestrator.shared_protocol`
+  and their values match `spec.json`, as a smoke test that the re-export `__init__.py` is wired up.
+- Verified manually: editing `spec.json` without regenerating fails all three drift-guard tests
+  (confirmed by temporarily adding a bogus request opcode and observing the expected failures,
+  then reverting).

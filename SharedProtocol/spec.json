@@ -1,0 +1,19 @@
+{
+  "frame": { "type_size_bytes": 1, "length_size_bytes": 4, "byte_order": "big" },
+  "requests": {
+    "REQ_GET_INFO": 1,
+    "REQ_RUN_STAGE": 2,
+    "REQ_LIST_FILES": 3,
+    "REQ_READ_FILE": 4
+  },
+  "responses": {
+    "RES_OK": 129,
+    "RES_FAIL": 130,
+    "RES_CRASH": 131,
+    "RES_FILE_ERROR": 132,
+    "RES_PROTOCOL_ERROR": 133
+  },
+  "canonical_stage_ids": [
+    "dfu", "bootrom", "payload", "leak", "kernel_rw", "escalate", "pair", "bruteforce"
+  ]
+}

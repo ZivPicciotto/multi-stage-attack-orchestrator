@@ -11,20 +11,25 @@ exploit. "Attacks," "stages," and "crashes" are simulation vocabulary.
 
 | Part | What | Status |
 |---|---|---|
-| **1 — Attack framework** | Python: model attacks, pick one, run it, extract data | **Done.** 84 tests passing, mypy clean. |
-| **2 — Device simulator** | C TCP server standing in for a real device | **Designed, not yet built.** Wire protocol and phase-by-phase plan are written; no C code exists yet. |
+| **1 — Attack framework** | Python: model attacks, pick one, run it, extract data | **Done.** 89 tests passing, mypy clean. |
+| **2 — Device simulator** | C TCP server standing in for a real device | **In progress.** Shared wire-protocol codegen (phase A) is done; the server itself (phases B–F) is planned, no C code yet. |
 | **3 — Tests against the simulator** | Integration tests that exercise Part 1 over a real socket, not just the in-memory mock | Not started — depends on Part 2. |
 
 ## Repo layout
 
 ```
 Attack_Orchestrator_Exercise.docx   # the original brief
+SharedProtocol/                     # wire-protocol source of truth + codegen (done)
+├── spec.json
+└── generate.py
 MultiAttackOrchestrator/            # Part 1 — Python framework (done)
 ├── plans/                          # design docs, written before the code, phase by phase
-├── orchestrator/                   # the importable package
+├── orchestrator/
+│   └── shared_protocol/            # GENERATED from SharedProtocol/spec.json
 └── tests/                          # pytest suite
-Simulator/                          # Part 2 — C TCP simulator (planned)
-└── plans/                          # wire protocol + phase-by-phase plan; no code yet
+Simulator/                          # Part 2 — C TCP simulator (in progress)
+├── plans/                          # wire protocol + phase-by-phase plan
+└── shared_protocol/                # GENERATED from SharedProtocol/spec.json
 ```
 
 Each part's `plans/` folder holds the reasoning this README only summarizes — start with
@@ -134,10 +139,11 @@ mid-run skip, total failure, all four extraction modes, and the context-dependen
 above — with full INFO-level logging so the narrative (stage attempts, retries, restarts, skips) is
 visible, not just the final result.
 
-## Part 2 — the device simulator (planned)
+## Part 2 — the device simulator (in progress)
 
-Not yet implemented — this section describes the design in `Simulator/plans/`, so the intent is on
-record even though the C code doesn't exist yet.
+The C server itself isn't built yet — this section describes the design in `Simulator/plans/`, so
+the intent is on record even where the code doesn't exist yet. The shared wire-protocol codegen
+(phase A) **is** built; it's described in full below since both sides already depend on it.
 
 ### Design goal
 
@@ -145,7 +151,7 @@ A single-threaded C TCP server that plays the device's role for real, well enoug
 `TcpDeviceConnection` satisfies `DeviceConnection` exactly like the mock does — meaning zero changes
 to anything above the seam (`MultiAttackOrchestrator`, `SingleAttackOrchestrator`, `AttackResolver`,
 `DataExtractor`). Only two new Python files get added: `connection/tcp.py`
-(`TcpDeviceConnection` + `TcpConnectionProvider`) and a generated `wire_protocol.py`.
+(`TcpDeviceConnection` + `TcpConnectionProvider`) and the already-generated `shared_protocol/`.
 
 ### Config-driven, not compiled-in
 
@@ -157,9 +163,13 @@ on the wire, never something that needs to stay in sync in *compiled* code on ei
 
 **What's genuinely shared vs. not:** a literal shared module across Python and C isn't possible,
 but a single source of truth for the parts that must match bit-for-bit is — the wire opcodes and
-frame format are generated from one `protocol/spec.json` into both a Python module and a C header,
-with a codegen-diff test guarding against drift. Stage IDs/paths don't need that treatment, since
-the simulator never hardcodes them.
+frame format are generated from one `SharedProtocol/spec.json` (a folder sibling to
+`MultiAttackOrchestrator/` and `Simulator/`) into `orchestrator/shared_protocol/wire_protocol.py`
+and `Simulator/shared_protocol/protocol_ids.h`, each headed with a `GENERATED — DO NOT EDIT`
+comment. A test (`test_shared_protocol.py`) regenerates both in-memory and diffs them against what's
+committed, so an edit to `spec.json` without regenerating fails loudly. Stage IDs/paths don't need
+that treatment, since the simulator never hardcodes them — `spec.json`'s `canonical_stage_ids` is
+shared *vocabulary*, not a contract anything enforces.
 
 ### Wire protocol v1
 
@@ -234,5 +244,5 @@ simulator subprocess instead. If those pass unchanged in shape, the seam held en
   matching C code change, defeating the point of a generic device stand-in.
 - **Generated protocol module/header from one spec vs. two hand-maintained copies** — the wire
   format is the one place Python and C genuinely must agree bit-for-bit, so it's generated from a
-  single `protocol/spec.json` with a drift-detecting test, rather than trusted to stay in sync by
-  hand.
+  single `SharedProtocol/spec.json` with a drift-detecting test, rather than trusted to stay in
+  sync by hand.

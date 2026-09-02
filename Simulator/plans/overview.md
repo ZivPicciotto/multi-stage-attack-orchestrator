@@ -27,7 +27,7 @@ From the earlier discussion on this: a literal shared module across Python and C
 but a single source of truth is. The line we're drawing:
 
 - **The wire-level opcodes and frame format** genuinely must match bit-for-bit on both sides —
-  these come from one generated source (`protocol/spec.json` → a Python module and a C header).
+  these come from one generated source (`SharedProtocol/spec.json` → a Python module and a C header).
 - **Stage IDs and file paths do not** need to be compiled constants anywhere, because the
   simulator is config-driven. They're just strings in scenario JSON and in the Python attack
   catalog. `spec.json` still lists a canonical vocabulary purely as shared documentation (so
@@ -118,7 +118,7 @@ scenario's remaining scripted queues — no `alive` flag.
 ## File structure
 
 ```
-protocol/
+SharedProtocol/                    # sibling to MultiAttackOrchestrator/ and Simulator/
 ├── spec.json                      # opcodes + frame format + canonical stage-id vocabulary
 └── generate.py                    # stdlib-only codegen; a test re-runs it and diffs for drift
 
@@ -128,8 +128,9 @@ Simulator/
 ├── third_party/
 │   ├── cJSON.c                    # vendored (MIT) — see phase C
 │   └── cJSON.h
+├── shared_protocol/
+│   └── protocol_ids.h             # GENERATED from SharedProtocol/spec.json
 ├── include/
-│   ├── protocol_ids.h             # GENERATED from protocol/spec.json
 │   ├── frame.h
 │   ├── device_state.h
 │   └── scenario.h
@@ -150,7 +151,9 @@ Simulator/
     └── 07_all_attacks_fail.json
 
 MultiAttackOrchestrator/orchestrator/
-├── wire_protocol.py               # GENERATED from protocol/spec.json
+├── shared_protocol/
+│   ├── __init__.py                # hand-written re-export (project convention)
+│   └── wire_protocol.py           # GENERATED from SharedProtocol/spec.json
 └── connection/
     └── tcp.py                     # TcpDeviceConnection, TcpConnectionProvider
 ```
@@ -159,7 +162,7 @@ MultiAttackOrchestrator/orchestrator/
 
 | Phase | Doc | Deliverable | Depends on |
 |---|---|---|---|
-| A | `phaseA-shared-protocol.md` | `protocol/spec.json` + codegen, generated Python module + C header, drift-guard test | Part 1 (done) |
+| A | `phaseA-shared-protocol.md` | `SharedProtocol/spec.json` + codegen, generated Python module + C header, drift-guard test — **done** | Part 1 (done) |
 | B | `phaseB-server-skeleton.md` | TCP accept loop + frame encode/decode, no domain logic yet | A |
 | C | `phaseC-scenario-state.md` | `device_state.c`, `scenario.c` (cJSON-backed), mirrors `DeviceState`/`ScriptedBehavior` | A, B |
 | D | `phaseD-handlers.md` | The 4 request handlers; crash-then-close and drop-with-no-response | B, C |
