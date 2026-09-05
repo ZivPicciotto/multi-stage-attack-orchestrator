@@ -10,6 +10,7 @@ from orchestrator.shared_protocol.wire_protocol import (
     FRAME_TYPE_SIZE,
     RequestType,
     ResponseType,
+    StageId,
 )
 
 __all__ = [
@@ -18,5 +19,6 @@ __all__ = [
     "FRAME_TYPE_SIZE",
     "FRAME_LENGTH_SIZE",
     "FRAME_BYTE_ORDER",
+    "StageId",
     "CANONICAL_STAGE_IDS",
 ]

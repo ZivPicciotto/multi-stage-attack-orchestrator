@@ -35,7 +35,8 @@ in-memory and diffs against them on every test run.
     "RES_PROTOCOL_ERROR": 133
   },
   "canonical_stage_ids": [
-    "dfu", "bootrom", "payload", "leak", "kernel_rw", "escalate", "pair", "bruteforce"
+    "dfu", "bootrom", "payload", "leak", "kernel_rw", "escalate", "pair", "bruteforce",
+    "class_key_leak", "keybag_unwrap"
   ]
 }
 ```
@@ -45,11 +46,28 @@ disjoint byte ranges (`0x01–0x04` vs `0x81–0x85`) means a stray byte read ou
 immediately recognizable as "request-shaped" or "response-shaped" by a human staring at a hex
 dump — a small but real debugging aid when working with raw sockets in C.
 
-**Decision — `canonical_stage_ids` is documentation, not a contract.** Nothing in the generated
-C header or Python module enforces this list; it exists purely so scenario-file authors and the
-Part 1 attack catalog draw from one shared vocabulary instead of inventing near-duplicate names
-(`"kernel_rw"` vs `"kernelrw"`). A test *may* assert the Part 1 catalog's stage IDs are a subset
-of this list (nice-to-have, not required).
+**Revised — `canonical_stage_ids` is now an enforced source of truth, not just documentation.**
+The original version of this decision said nothing enforced the list, and for a while that was
+literally true: `catalog.py` used bare string literals that happened to match, and nothing checked
+it. That's backwards for something calling itself a single source of truth, so it was fixed on both
+sides that can actually be checked:
+
+- **Python side (structural, not just tested):** `generate_python` now emits a `StageId` class with
+  one named constant per canonical id (e.g. `StageId.KERNEL_RW = "kernel_rw"`), and `catalog.py`
+  imports and uses these instead of bare strings. A stage id can't drift from `spec.json` anymore —
+  renaming a value in `spec.json` and regenerating changes every call site automatically; renaming
+  the *name* would be a clean `ImportError` in `catalog.py`, not a silent mismatch.
+- **Scenario JSON side (can't import Python, so it's checked instead):** a scenario file is data,
+  not code, so it can't import `StageId`. `tests/test_shared_protocol.py` closes that gap the other
+  way — it loads every `Simulator/scenarios/*.json` file and asserts every key under `"stages"`/
+  `"battery_drain"` is a member of `canonical_stage_ids`. Verified this actually catches drift by
+  temporarily adding a bogus stage id to a scenario file and confirming the test failed, then
+  reverting.
+
+This also caught a real, pre-existing gap: `KEYBAG_CHAIN`'s two stage ids (`class_key_leak`,
+`keybag_unwrap`) were added to the Python catalog after this list was first written, and were never
+added here — so the "single source of truth" had silently stopped being one the moment that attack
+was added. Both are now in the list above.
 
 ## `SharedProtocol/generate.py`
 

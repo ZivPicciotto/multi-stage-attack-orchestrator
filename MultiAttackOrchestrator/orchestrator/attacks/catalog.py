@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from orchestrator.models.attack import Attack, ContextDependentStage, SingleStage
 from orchestrator.models.device import DeviceCompatibilityReqs, IOSVersion
+from orchestrator.shared_protocol import StageId
 
 BOOTROM_CHAIN = Attack(
     id="bootrom-checkm8-style",
@@ -28,9 +29,9 @@ BOOTROM_CHAIN = Attack(
     ),
     max_restarts=3,
     stages=(
-        SingleStage("DFU entry", "dfu", success_probability=0.95, max_retries=2),
-        SingleStage("Bootrom trigger", "bootrom", success_probability=0.80, max_retries=1),
-        SingleStage("Payload upload", "payload", success_probability=0.90),
+        SingleStage("DFU entry", StageId.DFU, success_probability=0.95, max_retries=2),
+        SingleStage("Bootrom trigger", StageId.BOOTROM, success_probability=0.80, max_retries=1),
+        SingleStage("Payload upload", StageId.PAYLOAD, success_probability=0.90),
     ),
 )
 
@@ -44,9 +45,9 @@ KERNEL_CHAIN = Attack(
     ),
     max_restarts=1,
     stages=(
-        SingleStage("Info leak", "leak", success_probability=0.85),
-        SingleStage("Kernel R/W", "kernel_rw", success_probability=0.70),
-        SingleStage("Escalate", "escalate", success_probability=0.90, max_retries=1),
+        SingleStage("Info leak", StageId.LEAK, success_probability=0.85),
+        SingleStage("Kernel R/W", StageId.KERNEL_RW, success_probability=0.70),
+        SingleStage("Escalate", StageId.ESCALATE, success_probability=0.90, max_retries=1),
     ),
 )
 
@@ -56,8 +57,8 @@ PASSCODE_CHAIN = Attack(
     requirements=DeviceCompatibilityReqs(min_battery=20),
     max_restarts=0,
     stages=(
-        SingleStage("Pair with device", "pair", success_probability=0.99),
-        SingleStage("Brute force passcode", "bruteforce", success_probability=0.40),
+        SingleStage("Pair with device", StageId.PAIR, success_probability=0.99),
+        SingleStage("Brute force passcode", StageId.BRUTEFORCE, success_probability=0.40),
     ),
 )
 
@@ -67,10 +68,10 @@ KEYBAG_CHAIN = Attack(
     requirements=DeviceCompatibilityReqs(min_ios=IOSVersion(16, 0), min_battery=20),
     max_restarts=1,
     stages=(
-        SingleStage("Class key leak", "class_key_leak", success_probability=0.80),
+        SingleStage("Class key leak", StageId.CLASS_KEY_LEAK, success_probability=0.80),
         ContextDependentStage(
             "Keybag unwrap",
-            "keybag_unwrap",
+            StageId.KEYBAG_UNWRAP,
             success_probability=0.70,
             requires="Class key leak",
         ),

@@ -14,6 +14,7 @@
     "RES_PROTOCOL_ERROR": 133
   },
   "canonical_stage_ids": [
-    "dfu", "bootrom", "payload", "leak", "kernel_rw", "escalate", "pair", "bruteforce"
+    "dfu", "bootrom", "payload", "leak", "kernel_rw", "escalate", "pair", "bruteforce",
+    "class_key_leak", "keybag_unwrap"
   ]
 }

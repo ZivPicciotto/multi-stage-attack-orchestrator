@@ -59,3 +59,28 @@ class TestGeneratedPythonModuleIsImportable:
             assert RequestType[name.removeprefix("REQ_")] == value
         for name, value in SPEC["responses"].items():
             assert ResponseType[name.removeprefix("RES_")] == value
+
+
+class TestCanonicalStageIdsAreActuallyUsed:
+    """CANONICAL_STAGE_IDS is only worth generating if something on each side is actually checked
+    against it. catalog.py can't drift silently (it imports StageId's named constants directly --
+    a typo there is an ImportError, not a mismatch); this class is what keeps the C-side scenario
+    JSON files honest, since JSON data can't import a Python constant the way catalog.py does."""
+
+    def test_catalog_stage_ids_are_all_canonical(self):
+        from orchestrator.attacks.catalog import CATALOG
+
+        used = {stage.stage_id for attack in CATALOG for stage in attack.stages}
+        assert used <= set(SPEC["canonical_stage_ids"])
+
+    def test_scenario_files_only_reference_canonical_stage_ids(self):
+        canonical = set(SPEC["canonical_stage_ids"])
+        scenarios_dir = REPO_ROOT / "Simulator" / "scenarios"
+        offenders: dict[str, set[str]] = {}
+        for path in sorted(scenarios_dir.glob("*.json")):
+            data = json.loads(path.read_text())
+            used = set(data.get("stages", {})) | set(data.get("battery_drain", {}))
+            unknown = used - canonical
+            if unknown:
+                offenders[path.name] = unknown
+        assert not offenders, f"scenario files reference non-canonical stage ids: {offenders}"

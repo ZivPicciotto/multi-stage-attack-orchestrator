@@ -24,16 +24,34 @@ FRAME_TYPE_SIZE: int = 1
 FRAME_LENGTH_SIZE: int = 4
 FRAME_BYTE_ORDER: str = 'big'
 
-# Shared vocabulary, not a contract: nothing enforces catalog stage IDs are drawn from
-# this list. It exists so scenario authors and the Part 1 attack catalog don't invent
-# near-duplicate names for the same thing.
+
+class StageId:
+    """Canonical stage-id vocabulary. Import and use these -- e.g. StageId.KERNEL_RW --
+    instead of writing the bare string, so the Part 1 catalog can't quietly drift from
+    this generated source: a rename here becomes a rename (or a clean ImportError) in
+    catalog.py, not a silent mismatch nothing catches."""
+
+    DFU = 'dfu'
+    BOOTROM = 'bootrom'
+    PAYLOAD = 'payload'
+    LEAK = 'leak'
+    KERNEL_RW = 'kernel_rw'
+    ESCALATE = 'escalate'
+    PAIR = 'pair'
+    BRUTEFORCE = 'bruteforce'
+    CLASS_KEY_LEAK = 'class_key_leak'
+    KEYBAG_UNWRAP = 'keybag_unwrap'
+
+
 CANONICAL_STAGE_IDS: tuple[str, ...] = (
-    'dfu',
-    'bootrom',
-    'payload',
-    'leak',
-    'kernel_rw',
-    'escalate',
-    'pair',
-    'bruteforce',
+    StageId.DFU,
+    StageId.BOOTROM,
+    StageId.PAYLOAD,
+    StageId.LEAK,
+    StageId.KERNEL_RW,
+    StageId.ESCALATE,
+    StageId.PAIR,
+    StageId.BRUTEFORCE,
+    StageId.CLASS_KEY_LEAK,
+    StageId.KEYBAG_UNWRAP,
 )

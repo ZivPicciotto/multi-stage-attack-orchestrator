@@ -30,6 +30,7 @@ def _enum_lines(members: dict[str, int], strip_prefix: str) -> list[str]:
 
 def generate_python(spec: dict[str, Any]) -> str:
     frame = spec["frame"]
+    stage_ids: list[str] = spec["canonical_stage_ids"]
     lines = [
         f"# {GENERATED_NOTICE}",
         "",
@@ -50,11 +51,18 @@ def generate_python(spec: dict[str, Any]) -> str:
         f"FRAME_LENGTH_SIZE: int = {frame['length_size_bytes']}",
         f"FRAME_BYTE_ORDER: str = {frame['byte_order']!r}",
         "",
-        "# Shared vocabulary, not a contract: nothing enforces catalog stage IDs are drawn from",
-        "# this list. It exists so scenario authors and the Part 1 attack catalog don't invent",
-        "# near-duplicate names for the same thing.",
+        "",
+        "class StageId:",
+        '    """Canonical stage-id vocabulary. Import and use these -- e.g. StageId.KERNEL_RW --',
+        "    instead of writing the bare string, so the Part 1 catalog can't quietly drift from",
+        "    this generated source: a rename here becomes a rename (or a clean ImportError) in",
+        '    catalog.py, not a silent mismatch nothing catches."""',
+        "",
+        *(f"    {sid.upper()} = {sid!r}" for sid in stage_ids),
+        "",
+        "",
         "CANONICAL_STAGE_IDS: tuple[str, ...] = (",
-        *(f"    {sid!r}," for sid in spec["canonical_stage_ids"]),
+        *(f"    StageId.{sid.upper()}," for sid in stage_ids),
         ")",
         "",
     ]
